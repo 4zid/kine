@@ -43,3 +43,6 @@ next-env.d.ts
 
 # vistas previas locales de componentes (solo desarrollo)
 /src/app/dev/
+
+# worktrees de agentes
+/.claude/worktrees/

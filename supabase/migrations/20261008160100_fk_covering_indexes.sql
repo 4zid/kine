@@ -12,6 +12,5 @@ create index if not exists pain_records_patient_professional_idx
 create index if not exists patient_studies_patient_professional_idx
   on public.patient_studies (patient_id, professional_id);
 
-drop index if exists public.pain_records_session_idx;
 create index if not exists pain_records_session_professional_idx
   on public.pain_records (session_id, professional_id);
