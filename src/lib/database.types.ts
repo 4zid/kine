@@ -15,6 +15,45 @@ export type Database = {
   }
   public: {
     Tables: {
+      clinical_audit_log: {
+        Row: {
+          changed_at: string
+          changed_by: string | null
+          id: number
+          new_data: Json | null
+          old_data: Json | null
+          operation: string
+          patient_id: string | null
+          professional_id: string
+          record_id: string
+          table_name: string
+        }
+        Insert: {
+          changed_at?: string
+          changed_by?: string | null
+          id?: never
+          new_data?: Json | null
+          old_data?: Json | null
+          operation: string
+          patient_id?: string | null
+          professional_id: string
+          record_id: string
+          table_name: string
+        }
+        Update: {
+          changed_at?: string
+          changed_by?: string | null
+          id?: never
+          new_data?: Json | null
+          old_data?: Json | null
+          operation?: string
+          patient_id?: string | null
+          professional_id?: string
+          record_id?: string
+          table_name?: string
+        }
+        Relationships: []
+      }
       clinical_histories: {
         Row: {
           alcohol: string | null
@@ -591,6 +630,7 @@ export type Database = {
           health_insurance: string | null
           id: string | null
           kinesic_diagnosis: string | null
+          last_activity_at: string | null
           last_name: string | null
           last_session_date: string | null
           max_pain: number | null
