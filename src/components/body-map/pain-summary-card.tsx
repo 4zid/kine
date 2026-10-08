@@ -30,7 +30,7 @@ export function PainSummaryCard({
       aria-label="Resumen del dolor"
       className={cn("relative overflow-hidden rounded-card bg-accent p-6 text-white sm:p-7", className)}
     >
-      <DecorCircles className="text-white/70" variant="a" />
+      <DecorCircles className="text-white/70" variant="c" />
       <div className="relative">
         <div className="flex items-center justify-between gap-3">
           <span className="inline-flex h-8 items-center rounded-full px-3.5 text-[13px] font-medium shadow-[inset_0_0_0_1px_rgb(255_255_255/0.55)]">
