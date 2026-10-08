@@ -42,11 +42,12 @@ npm run build       # build de producción
 
 ```
 src/
-  proxy.ts                      # refresco de sesión + protección de rutas
+  proxy.ts                      # refresco de sesión + protección de rutas (no redirige Server Actions)
   app/
+    not-found.tsx, global-error.tsx   # 404 de toda la app y último recurso (errores de layouts)
     (auth)/                     # bienvenida (onboarding), registro, ingresar, recuperar, verificar, restablecer
     auth/confirm|callback/      # route handlers de verificación de email / PKCE
-    (app)/                      # zona privada con AppShell (sidebar)
+    (app)/                      # zona privada con AppShell (sidebar); error.tsx / not-found.tsx propios
       inicio/                   # dashboard
       pacientes/                # listado, nuevo, [id]/(resumen|historia|mapa|sesiones|estudios|informe|editar)
       ajustes/                  # perfil del profesional
