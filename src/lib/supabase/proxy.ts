@@ -46,6 +46,11 @@ export async function updateSession(request: NextRequest) {
     return redirect;
   };
 
+  // Vistas previas locales de componentes con datos de ejemplo (src/app/dev, ignorado por git).
+  if (process.env.NODE_ENV !== "production" && matchesPath(pathname, ["/dev"])) {
+    return response;
+  }
+
   if (pathname === "/") {
     return redirectTo(isAuthenticated ? HOME_PATH : "/bienvenida");
   }

@@ -233,3 +233,10 @@ export function formatDecimal(n: number | null | undefined, digits = 1): string 
   if (n == null || Number.isNaN(n)) return "—";
   return n.toLocaleString(LOCALE, { minimumFractionDigits: digits, maximumFractionDigits: digits });
 }
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** true si el string es un UUID válido (evita errores 22P02 de Postgres). */
+export function isUuid(value: string | null | undefined): value is string {
+  return typeof value === "string" && UUID_RE.test(value);
+}

@@ -1,4 +1,6 @@
 @import "tailwindcss";
+/* Las vistas previas locales (src/app/dev) están en .gitignore: registrarlas explícitamente. */
+@source "./dev";
 
 /* =========================================================================
    kine · design tokens
