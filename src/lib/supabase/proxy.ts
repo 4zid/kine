@@ -1,6 +1,7 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import type { Database } from "@/lib/database.types";
+import { SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from "@/lib/supabase/config";
 import { AUTH_ONLY_PATHS, HOME_PATH, LOGIN_PATH, PUBLIC_PATHS, matchesPath } from "@/lib/routes";
 
 /**
@@ -12,8 +13,8 @@ export async function updateSession(request: NextRequest) {
   let authHeaders: Record<string, string> = {};
 
   const supabase = createServerClient<Database>(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!,
+    SUPABASE_URL,
+    SUPABASE_PUBLISHABLE_KEY,
     {
       cookies: {
         getAll() {
