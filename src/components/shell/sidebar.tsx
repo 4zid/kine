@@ -145,7 +145,7 @@ export function SidebarContent({ professional, recentPatients, activeCount, onNa
 
       {recentPatients.length > 0 ? (
         <>
-          <SectionLabel id={recentId} className="mt-8 mb-2">
+          <SectionLabel id={recentId} className="mt-8 mb-2 [@media(max-height:940px)]:mt-6">
             Recientes
           </SectionLabel>
           <ul className="flex flex-col gap-1" aria-labelledby={recentId}>
@@ -183,7 +183,7 @@ export function SidebarContent({ professional, recentPatients, activeCount, onNa
         </>
       ) : null}
 
-      <SectionLabel className="mt-8 mb-2">General</SectionLabel>
+      <SectionLabel className="mt-8 mb-2 [@media(max-height:940px)]:mt-6">General</SectionLabel>
       <nav className="flex flex-col gap-1" aria-label="General">
         {GENERAL_NAV.map(({ href, label, icon: Icon }) => (
           <NavItem key={href} href={href} active={isActive(href)} onNavigate={onNavigate}>
@@ -202,29 +202,39 @@ export function SidebarContent({ professional, recentPatients, activeCount, onNa
         </form>
       </nav>
 
-      <div className="mt-auto pt-8">
+      {/*
+        Tarjeta del profesional. En la barra lateral de escritorio queda fija abajo (sticky) para que
+        nunca quede cortada; en pantallas bajas (≤ 940px de alto) se compacta y lo de arriba se desplaza
+        por debajo, con un degradé que indica que hay más contenido. En el menú mobile va al final.
+      */}
+      <div className="mt-auto bg-surface pt-6 pb-4 before:pointer-events-none before:absolute before:inset-x-0 before:bottom-full before:hidden before:h-8 before:bg-gradient-to-t before:from-surface before:to-transparent lg:sticky lg:bottom-0 lg:z-10 lg:before:block [@media(max-height:940px)]:pt-3">
         <div
           data-surface="dark"
-          className="relative overflow-hidden rounded-[22px] bg-gradient-to-br from-brand-800 via-brand-700 to-brand p-5 text-white [@media(max-height:860px)]:p-4"
+          className="relative overflow-hidden rounded-[22px] bg-gradient-to-br from-brand-800 via-brand-700 to-brand p-5 text-white [@media(max-height:940px)]:p-4"
         >
           <svg aria-hidden viewBox="0 0 200 160" className="pointer-events-none absolute inset-0 h-full w-full text-white" fill="none" stroke="currentColor">
             <circle cx="190" cy="-10" r="90" strokeOpacity="0.14" />
             <circle cx="-20" cy="170" r="80" strokeOpacity="0.12" />
           </svg>
           <div className="relative">
-            <span className="mb-4 inline-flex size-10 items-center justify-center rounded-full bg-white text-brand [@media(max-height:860px)]:hidden">
+            <span className="mb-4 inline-flex size-10 items-center justify-center rounded-full bg-white text-brand [@media(max-height:940px)]:hidden">
               <UserRound className="size-5" strokeWidth={1.8} aria-hidden />
             </span>
-            <p className="display text-xl leading-tight">{name ? `Lic. ${name}` : "Tu perfil profesional"}</p>
-            <p className="mt-1.5 text-sm text-white/80">
+            <p className="display text-xl leading-tight [@media(max-height:940px)]:text-lg">{name ? `Lic. ${name}` : "Tu perfil profesional"}</p>
+            <p className="mt-1.5 text-sm text-white/80 [@media(max-height:940px)]:mt-1 [@media(max-height:940px)]:text-[13px]">
               {activeCount === 1 ? "1 paciente en tratamiento" : `${activeCount} pacientes en tratamiento`}
-              {license ? ` · ${license}` : ""}
+              {license ? (
+                <>
+                  {" · "}
+                  <span className="whitespace-nowrap">{license}</span>
+                </>
+              ) : null}
             </p>
             <ButtonLink
               href="/pacientes/nuevo"
               onClick={onNavigate}
               variant="brand"
-              className="mt-5 w-full bg-white/12 shadow-[inset_0_0_0_1px_rgb(255_255_255/0.12)] hover:bg-white/20 focus-visible:outline-white [@media(max-height:860px)]:mt-4 [@media(max-height:860px)]:h-10"
+              className="mt-5 w-full bg-white/12 shadow-[inset_0_0_0_1px_rgb(255_255_255/0.12)] hover:bg-white/20 focus-visible:outline-white [@media(max-height:940px)]:mt-3 [@media(max-height:940px)]:h-10"
               icon={<Plus aria-hidden />}
             >
               Nuevo paciente

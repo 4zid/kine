@@ -33,7 +33,7 @@ export function AppShell({
 
       <aside aria-label="Barra lateral" className="fixed inset-y-0 left-0 z-20 hidden w-[316px] p-5 lg:block print:hidden">
         {/* Barra fina visible: indica que hay más contenido abajo en pantallas bajas. */}
-        <div className="scrollbar-thin h-full overflow-y-auto overscroll-contain rounded-card bg-surface p-4 pt-6">
+        <div className="scrollbar-thin h-full overflow-y-auto overscroll-contain rounded-card bg-surface px-4 pt-6">
           <SidebarContent professional={professional} recentPatients={recentPatients} activeCount={activeCount} />
         </div>
       </aside>
