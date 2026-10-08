@@ -13,35 +13,28 @@ const LIST_COLUMNS =
   "id, first_name, last_name, birth_date, sex, document_type, document_number, health_insurance, consultation_reason, kinesic_diagnosis, medical_diagnosis, status, tags, last_session_date, session_count, max_pain, active_regions" as const;
 
 /**
- * Divide la búsqueda en términos seguros para el filtro `.or()` de PostgREST:
- * quita los caracteres reservados de la sintaxis (`,` `(` `)` `"` `*` `:` `\`) y limita la cantidad.
+ * Normaliza la búsqueda igual que la columna generada `patients.search_text`
+ * (minúsculas, sin acentos): "Pérez" y "perez" encuentran lo mismo. Los documentos con
+ * puntos o guiones ("30.123.456") se comparan sin separadores. Máximo 4 términos.
  */
 export function searchTerms(q: string): string[] {
   return q
-    .replace(/[,()"'\\*:]/g, " ")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[,()"'\\*:%_]/g, " ")
     .split(/\s+/)
-    .map((t) => t.trim())
+    .map((t) => (/^[\d.\-]+$/.test(t) ? t.replace(/[.\-]/g, "") : t))
     .filter(Boolean)
     .slice(0, 4);
 }
 
-/** Escapa los comodines de LIKE para buscar el texto literal. */
-function escapeLike(term: string): string {
-  return term.replace(/[%_]/g, (m) => `\\${m}`);
-}
-
 /**
- * Un filtro `.or()` por término: cada término debe aparecer en el nombre, el apellido o el documento.
- * Encadenar varios `.or()` los combina con AND ("juan perez" encuentra a Juan Pérez).
+ * Un patrón ILIKE por término sobre `search_text` (índice trigram). Encadenar varios
+ * `.ilike()` los combina con AND ("juan perez" encuentra a Juan Pérez).
  */
-export function searchOrFilters(q: string): string[] {
-  return searchTerms(q).map((term) => {
-    const like = `%${escapeLike(term)}%`;
-    const parts = [`first_name.ilike.${like}`, `last_name.ilike.${like}`];
-    const doc = term.replace(/[.\-\s]/g, "");
-    if (doc) parts.push(`document_number.ilike.%${escapeLike(doc)}%`);
-    return parts.join(",");
-  });
+export function searchPatterns(q: string): string[] {
+  return searchTerms(q).map((term) => `%${term}%`);
 }
 
 function isStatus(value: string | null): value is PatientStatus {
@@ -51,13 +44,13 @@ function isStatus(value: string | null): value is PatientStatus {
 /** Listado paginado de pacientes desde la vista `patient_overview` (la RLS filtra por profesional). */
 export async function listPatients(params: PatientListParams): Promise<PatientListResult> {
   const supabase = await createClient();
-  const filters = searchOrFilters(params.q);
-  const hasSearch = filters.length > 0;
+  const patterns = searchPatterns(params.q);
+  const hasSearch = patterns.length > 0;
 
   const countQuery = (status: PatientStatus | null, withSearch: boolean) => {
     let query = supabase.from("patients").select("id", { count: "exact", head: true });
     if (status) query = query.eq("status", status);
-    if (withSearch) for (const f of filters) query = query.or(f);
+    if (withSearch) for (const p of patterns) query = query.ilike("search_text", p);
     return query;
   };
 
@@ -103,7 +96,7 @@ export async function listPatients(params: PatientListParams): Promise<PatientLi
 
   let query = supabase.from("patient_overview").select(LIST_COLUMNS);
   if (params.status !== "all") query = query.eq("status", params.status);
-  for (const f of filters) query = query.or(f);
+  for (const p of patterns) query = query.ilike("search_text", p);
 
   switch (params.sort) {
     case "name":

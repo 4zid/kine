@@ -342,6 +342,7 @@ export type Database = {
           phone: string | null
           professional_id: string
           referring_doctor: string | null
+          search_text: string | null
           sex: string | null
           status: string
           tags: string[]
@@ -378,6 +379,7 @@ export type Database = {
           phone?: string | null
           professional_id?: string
           referring_doctor?: string | null
+          search_text?: string | null
           sex?: string | null
           status?: string
           tags?: string[]
@@ -414,6 +416,7 @@ export type Database = {
           phone?: string | null
           professional_id?: string
           referring_doctor?: string | null
+          search_text?: string | null
           sex?: string | null
           status?: string
           tags?: string[]
@@ -594,6 +597,7 @@ export type Database = {
           medical_diagnosis: string | null
           phone: string | null
           professional_id: string | null
+          search_text: string | null
           session_count: number | null
           sex: string | null
           status: string | null
@@ -658,7 +662,7 @@ export type Database = {
       }
     }
     Functions: {
-      [_ in never]: never
+      immutable_unaccent: { Args: { value: string }; Returns: string }
     }
     Enums: {
       [_ in never]: never
