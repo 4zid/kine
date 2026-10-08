@@ -38,18 +38,34 @@ function toDate(value: string | Date): Date {
   return value.length <= 10 ? parseDateOnly(value) : new Date(value);
 }
 
-/** "8 oct 2026" */
+/** Zona horaria para formatear: las fechas "YYYY-MM-DD" ya son locales (sin zona). */
+function zoneFor(value: string | Date): string | undefined {
+  return typeof value === "string" && value.length <= 10 ? undefined : APP_TIME_ZONE;
+}
+
+/** Día, mes abreviado (sin punto) y año, armados a mano para no depender de la versión de ICU. */
+function dateParts(date: Date, timeZone: string | undefined): { day: string; month: string; year: string } {
+  const parts = new Intl.DateTimeFormat(LOCALE, { day: "numeric", month: "short", year: "numeric", timeZone }).formatToParts(date);
+  const get = (type: Intl.DateTimeFormatPartTypes) => parts.find((p) => p.type === type)?.value ?? "";
+  return { day: get("day"), month: get("month").replace(/\./g, ""), year: get("year") };
+}
+
+/** "8 oct 2026" (o "8 oct" con `withYear: false`). Mismo resultado en el servidor y en el navegador. */
 export function formatDate(value: string | Date | null | undefined, opts?: { withYear?: boolean }): string {
   if (!value) return "—";
-  const date = toDate(value);
+  const { day, month, year } = dateParts(toDate(value), zoneFor(value));
+  return opts?.withYear === false ? `${day} ${month}` : `${day} ${month} ${year}`;
+}
+
+/** "09:30" (24 h, hora de Argentina). */
+export function formatTime(value: string | Date | null | undefined): string {
+  if (!value) return "—";
   return new Intl.DateTimeFormat(LOCALE, {
-    day: "numeric",
-    month: "short",
-    ...(opts?.withYear === false ? {} : { year: "numeric" }),
-    timeZone: typeof value === "string" && value.length <= 10 ? undefined : APP_TIME_ZONE,
-  })
-    .format(date)
-    .replace(/\./g, "");
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+    timeZone: APP_TIME_ZONE,
+  }).format(toDate(value));
 }
 
 /** "jueves, 8 de octubre" */
@@ -60,31 +76,29 @@ export function formatLongDate(value: string | Date | null | undefined): string 
     weekday: "long",
     day: "numeric",
     month: "long",
-    timeZone: typeof value === "string" && value.length <= 10 ? undefined : APP_TIME_ZONE,
+    timeZone: zoneFor(value),
   }).format(date);
 }
 
-/** "8 oct, 14:30" */
+/** "8 oct, 14:30" (24 h, hora de Argentina). */
 export function formatDateTime(value: string | Date | null | undefined): string {
   if (!value) return "—";
-  return new Intl.DateTimeFormat(LOCALE, {
-    day: "numeric",
-    month: "short",
-    hour: "2-digit",
-    minute: "2-digit",
-    timeZone: APP_TIME_ZONE,
-  })
-    .format(toDate(value))
-    .replace(/\./g, "");
+  const date = toDate(value);
+  const { day, month } = dateParts(date, APP_TIME_ZONE);
+  return `${day} ${month}, ${formatTime(date)}`;
 }
 
-/** "hace 3 días", "hoy", "ayer" (para fechas pasadas). */
-export function formatRelativeDay(value: string | Date | null | undefined): string {
+/**
+ * "hace 3 días", "hoy", "ayer" (para fechas pasadas).
+ * `today` ("YYYY-MM-DD") permite calcularlo contra la fecha del servidor y evitar diferencias
+ * de hidratación en componentes cliente (pasala desde el Server Component).
+ */
+export function formatRelativeDay(value: string | Date | null | undefined, today: string = todayISO()): string {
   if (!value) return "—";
   const date = toDate(value);
-  const today = parseDateOnly(todayISO());
-  const target = parseDateOnly(toISODate(date));
-  const diff = Math.round((today.getTime() - target.getTime()) / 86_400_000);
+  const todayDate = parseDateOnly(today);
+  const target = parseDateOnly(value instanceof Date || value.length > 10 ? toISODate(date) : value);
+  const diff = Math.round((todayDate.getTime() - target.getTime()) / 86_400_000);
   if (diff === 0) return "hoy";
   if (diff === 1) return "ayer";
   if (diff === -1) return "mañana";
@@ -155,6 +169,10 @@ export function avatarTone(seed: string) {
 // ---------------------------------------------------------------------------
 // Escala de dolor (EVA 0-10)
 // ---------------------------------------------------------------------------
+/**
+ * Colores de la escala de dolor. Con `painTextColor` todo el texto supera 4.5:1 (WCAG AA):
+ * texto oscuro #2A1A10 de 0 a 7 (≥ 5.3:1) y blanco de 8 a 10 (≥ 4.6:1).
+ */
 export const PAIN_COLORS = [
   "#C9E8D3", // 0
   "#B6E2A1", // 1
@@ -164,7 +182,7 @@ export const PAIN_COLORS = [
   "#F5AD4D", // 5
   "#F18E43", // 6
   "#EA6C3B", // 7
-  "#DE4D35", // 8
+  "#CF4530", // 8
   "#C93434", // 9
   "#A3203A", // 10
 ] as const;
@@ -175,10 +193,10 @@ export function painColor(intensity: number | null | undefined): string {
   return PAIN_COLORS[i];
 }
 
-/** Color de texto legible sobre `painColor(intensity)`. */
+/** Color de texto legible (≥ 4.5:1) sobre `painColor(intensity)`. */
 export function painTextColor(intensity: number | null | undefined): string {
-  if (intensity == null) return "#3A3A42";
-  return intensity >= 7 ? "#FFFFFF" : "#2A1A10";
+  if (intensity == null || Number.isNaN(intensity)) return "#3A3A42";
+  return Math.round(intensity) >= 8 ? "#FFFFFF" : "#2A1A10";
 }
 
 export function painLevel(intensity: number | null | undefined): "none" | "mild" | "moderate" | "severe" {
@@ -234,7 +252,13 @@ export function formatDecimal(n: number | null | undefined, digits = 1): string 
   return n.toLocaleString(LOCALE, { minimumFractionDigits: digits, maximumFractionDigits: digits });
 }
 
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+/** Comportamiento de scroll respetando `prefers-reduced-motion` ("auto" si el usuario pide menos movimiento). */
+export function scrollBehavior(): ScrollBehavior {
+  if (typeof window === "undefined" || typeof window.matchMedia !== "function") return "auto";
+  return window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth";
+}
+
+const UUID_RE =/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** true si el string es un UUID válido (evita errores 22P02 de Postgres). */
 export function isUuid(value: string | null | undefined): value is string {

@@ -27,17 +27,27 @@ export function Badge({
   );
 }
 
-/** Indicador de intensidad de dolor (EVA) coloreado. */
+/**
+ * Indicador de intensidad de dolor (EVA 0–10) coloreado. El texto cumple 4.5:1 en toda la escala.
+ * Para lectores de pantalla se lee "Dolor 7 de 10" (más `context`/`updatedLabel` si se pasan),
+ * no un número suelto.
+ */
 export function PainBadge({
   intensity,
   size = "md",
   className,
   showLabel = false,
+  context,
+  updatedLabel,
 }: {
   intensity: number | null | undefined;
   size?: "sm" | "md" | "lg";
   className?: string;
   showLabel?: boolean;
+  /** Qué mide (p. ej. "por zona (mapa)" o "de la sesión"); se agrega al texto accesible y al tooltip. */
+  context?: string;
+  /** Antigüedad del dato (p. ej. "actualizado hace 3 días"); se agrega al texto accesible y al tooltip. */
+  updatedLabel?: string;
 }) {
   if (intensity == null) {
     return (
@@ -46,6 +56,7 @@ export function PainBadge({
       </span>
     );
   }
+  const description = [`Dolor${context ? ` ${context}` : ""}: ${intensity} de 10`, updatedLabel].filter(Boolean).join(", ");
   return (
     <span
       className={cn(
@@ -56,11 +67,14 @@ export function PainBadge({
         className,
       )}
       style={{ backgroundColor: painColor(intensity), color: painTextColor(intensity) }}
-      title={`Dolor ${intensity}/10`}
+      title={description}
     >
-      {showLabel ? "EVA " : null}
-      {intensity}
-      {showLabel ? <span className="font-normal opacity-75">/10</span> : null}
+      <span aria-hidden>
+        {showLabel ? "EVA " : null}
+        {intensity}
+        {showLabel ? <span className="font-normal">/10</span> : null}
+      </span>
+      <span className="sr-only">{description}</span>
     </span>
   );
 }

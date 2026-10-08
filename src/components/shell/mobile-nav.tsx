@@ -22,19 +22,28 @@ export function MobileNav(props: {
         </Link>
         <div className="flex items-center gap-2">
           <ButtonLink href="/pacientes/nuevo" size="icon" variant="primary" aria-label="Nuevo paciente">
-            <Plus />
+            <Plus aria-hidden />
           </ButtonLink>
           <button
             type="button"
             onClick={() => setOpen(true)}
             aria-label="Abrir menú"
+            aria-haspopup="dialog"
+            aria-expanded={open}
             className="inline-flex size-11 items-center justify-center rounded-full bg-surface text-ink shadow-inset"
           >
-            <Menu className="size-5" />
+            <Menu className="size-5" aria-hidden />
           </button>
         </div>
       </header>
-      <Dialog open={open} onClose={() => setOpen(false)} variant="sheet" size="sm" className="sm:max-w-sm">
+      <Dialog
+        open={open}
+        onClose={() => setOpen(false)}
+        variant="sheet"
+        size="sm"
+        aria-label="Menú"
+        className="sm:max-w-sm"
+      >
         <div className="pb-4 pl-4">
           <SidebarContent {...props} onNavigate={() => setOpen(false)} />
         </div>

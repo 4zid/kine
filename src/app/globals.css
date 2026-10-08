@@ -19,11 +19,13 @@
   --color-line: #e3e3e9;
   --color-line-strong: #d2d2da;
 
-  /* Texto */
+  /* Texto. muted y subtle superan 4.5:1 (WCAG AA) sobre surface, surface-2, surface-3 y canvas:
+     muted #5e5e68 ≥ 5.3:1 · subtle #686871 ≥ 4.5:1. Para trazos puramente decorativos (bordes,
+     separadores) usar line / line-strong. */
   --color-ink: #111114;
   --color-ink-2: #2e2e35;
-  --color-muted: #6b6b75;
-  --color-subtle: #9d9da6;
+  --color-muted: #5e5e68;
+  --color-subtle: #686871;
 
   /* Marca (verde profundo) */
   --color-brand-900: #0c2a1c;
@@ -50,12 +52,12 @@
   --color-violet: #4b3bb5;
   --color-red: #dc4b3e;
 
-  /* Estados */
-  --color-danger: #d23f31;
+  /* Estados (usables como texto: ≥ 4.5:1 sobre blanco y sobre su fondo -50; y blanco sobre ellos) */
+  --color-danger: #b8342a;
   --color-danger-50: #fdecea;
-  --color-warning: #b7791f;
+  --color-warning: #8a5a12;
   --color-warning-50: #fdf5e4;
-  --color-success: #2f9e5b;
+  --color-success: #1f7a45;
   --color-success-50: #e8f6ee;
 
   /* Radios */
@@ -150,6 +152,21 @@
     outline-offset: 2px;
   }
 
+  /* Superficies oscuras (bg-ink, verde de marca, azul de acento): el anillo de foco pasa a blanco.
+     Marcar el contenedor con data-surface="dark" (o usar focus-visible:outline-white puntual). */
+  [data-surface="dark"] :focus-visible {
+    outline-color: #fff;
+  }
+
+  /* Mobile: 16px en campos de texto para que iOS Safari no haga zoom al enfocar. */
+  @media (max-width: 639.98px) {
+    input:not([type="checkbox"], [type="radio"], [type="range"], [type="file"], [type="color"]),
+    textarea,
+    select {
+      font-size: max(16px, 1em);
+    }
+  }
+
   input,
   textarea,
   select,
@@ -187,6 +204,32 @@
   scrollbar-width: none;
   &::-webkit-scrollbar {
     display: none;
+  }
+}
+
+/* Barra de scroll fina y visible (indica que hay más contenido). */
+@utility scrollbar-thin {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-line-strong) transparent;
+  &::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  &::-webkit-scrollbar-thumb {
+    background: var(--color-line-strong);
+    border-radius: 9999px;
+  }
+  &::-webkit-scrollbar-track {
+    background: transparent;
+  }
+}
+
+/* Amplía el área táctil a ≥ 40px sin cambiar el tamaño visual (el elemento debe ser relative). */
+@utility hit-area {
+  &::after {
+    content: "";
+    position: absolute;
+    inset: min(0px, calc((100% - 40px) / 2)) min(0px, calc((100% - 40px) / 2));
   }
 }
 

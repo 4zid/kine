@@ -88,7 +88,7 @@ export function ConfirmDialog({
             <p className="text-sm text-muted">
               Para confirmar, escribí <span className="font-semibold text-ink">{confirmText}</span>
             </p>
-            <Input value={typed} onChange={(e) => setTyped(e.target.value)} autoFocus aria-label="Texto de confirmación" />
+            <Input value={typed} onChange={(e) => setTyped(e.target.value)} data-autofocus aria-label={`Escribí ${confirmText} para confirmar`} autoComplete="off" />
           </div>
         ) : null}
       </Dialog>

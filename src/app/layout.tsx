@@ -39,7 +39,9 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         {children}
         <Toaster
           position="bottom-center"
+          containerAriaLabel="Notificaciones"
           toastOptions={{
+            closeButtonAriaLabel: "Cerrar notificación",
             classNames: {
               toast:
                 "!rounded-2xl !border-0 !bg-ink !text-white !shadow-float !font-sans !text-sm !px-4 !py-3",
