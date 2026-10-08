@@ -2,7 +2,9 @@
  * Cookie que recuerda que este navegador ya vio el recorrido / tiene cuenta.
  * La puede usar el proxy para mandar "/" directo a /ingresar en vez de /bienvenida.
  */
-export const ONBOARDED_COOKIE = "kine_onboarded";
+import { ONBOARDED_COOKIE } from "@/lib/routes";
+
+export { ONBOARDED_COOKIE };
 export const ONBOARDED_COOKIE_MAX_AGE = 60 * 60 * 24 * 365;
 
 /** Marca la cookie desde el navegador (no es sensible: solo un flag de UX). */

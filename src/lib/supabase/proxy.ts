@@ -2,7 +2,7 @@ import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import type { Database } from "@/lib/database.types";
 import { SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from "@/lib/supabase/config";
-import { AUTH_ONLY_PATHS, HOME_PATH, LOGIN_PATH, PUBLIC_PATHS, matchesPath } from "@/lib/routes";
+import { AUTH_ONLY_PATHS, HOME_PATH, LOGIN_PATH, ONBOARDED_COOKIE, PUBLIC_PATHS, matchesPath } from "@/lib/routes";
 
 /**
  * Refresca la sesión de Supabase en cada request y protege las rutas privadas.
@@ -53,7 +53,8 @@ export async function updateSession(request: NextRequest) {
   }
 
   if (pathname === "/") {
-    return redirectTo(isAuthenticated ? HOME_PATH : "/bienvenida");
+    if (isAuthenticated) return redirectTo(HOME_PATH);
+    return redirectTo(request.cookies.has(ONBOARDED_COOKIE) ? LOGIN_PATH : "/bienvenida");
   }
 
   if (!isAuthenticated && !matchesPath(pathname, PUBLIC_PATHS)) {

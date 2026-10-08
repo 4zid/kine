@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { ReportControls } from "@/components/report/report-controls";
+import { BodyMapPreview } from "@/components/body-map/body-map-preview";
 import { ReportDocument, type ReportPainZone } from "@/components/report/report-document";
 import { ReportPrintStyles } from "@/components/report/report-print-styles";
 import { resolvePeriod } from "@/components/report/report-utils";
@@ -72,6 +73,15 @@ export default async function ReportPage({ params, searchParams }: PageProps<"/p
         history={history}
         sessions={sessions ?? []}
         painZones={painZones}
+        bodyMap={
+          painZones.length > 0 ? (
+            <BodyMapPreview
+              painByRegion={Object.fromEntries(painZones.map((z) => [z.region, { intensity: z.intensity, status: z.status }]))}
+              size="md"
+              showLegend
+            />
+          ) : undefined
+        }
       />
     </div>
   );

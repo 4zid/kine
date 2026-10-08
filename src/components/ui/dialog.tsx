@@ -85,7 +85,11 @@ export function Dialog({
               </button>
             </div>
           )}
-          <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5 sm:px-7">{children}</div>
+          {children != null && children !== false ? (
+            <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5 sm:px-7">{children}</div>
+          ) : (
+            <div className="h-5" />
+          )}
           {footer ? (
             <div className="flex flex-wrap items-center justify-end gap-2 border-t border-line bg-surface px-6 py-4 sm:px-7">
               {footer}

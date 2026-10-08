@@ -325,6 +325,12 @@ export const PAIN_STATUS: Record<PainStatus, { label: string; color: string }> =
   resolved: { label: "Resuelto", color: "#2F9E5B" },
 };
 
+/** Series de los gráficos de evolución (dolor al inicio / al final). Colores validados (ΔE CVD 34, contraste ≥ 3:1). */
+export const PAIN_SERIES = {
+  before: { label: "Al inicio", color: "#EA6A2E" },
+  after: { label: "Al final", color: "#3B3BF2" },
+} as const;
+
 /** Etiquetas de la escala EVA (0-10). */
 export const PAIN_SCALE_LABELS: Record<number, string> = {
   0: "Sin dolor",

@@ -225,7 +225,7 @@ export function formatBytes(bytes: number | null | undefined): string {
     n /= 1024;
     i++;
   }
-  return `${n.toFixed(n >= 10 || i === 0 ? 0 : 1)} ${units[i]}`;
+  return `${n.toLocaleString(LOCALE, { maximumFractionDigits: n >= 10 || i === 0 ? 0 : 1 })} ${units[i]}`;
 }
 
 /** Número con coma decimal es-AR: 5.2 => "5,2". */

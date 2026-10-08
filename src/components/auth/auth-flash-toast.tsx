@@ -5,19 +5,13 @@ import { useEffect } from "react";
 import { toast } from "sonner";
 
 const FLASHES: Record<string, { param: string; value: string; title: string; description?: string }> = {
-  bienvenida: {
-    param: "bienvenida",
-    value: "1",
-    title: "¡Tu cuenta está lista!",
-    description: "Empezá agregando a tu primer paciente.",
-  },
   clave: { param: "clave", value: "actualizada", title: "Actualizaste tu contraseña." },
 };
 
 /**
  * Muestra un toast según parámetros que dejan los flujos de acceso
- * (`?bienvenida=1` después de registrarse, `?clave=actualizada` después de cambiar la
- * contraseña) y limpia la URL. Montar dentro de un <Suspense> en la zona privada.
+ * (`?clave=actualizada` después de cambiar la contraseña) y limpia la URL.
+ * La bienvenida (`?bienvenida=1`) la muestra el banner del inicio. Montar dentro de un <Suspense> en la zona privada.
  */
 export function AuthFlashToast() {
   const params = useSearchParams();

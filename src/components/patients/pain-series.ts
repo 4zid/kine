@@ -3,10 +3,9 @@
  * los Server Components puedan leerlas (p. ej. para la leyenda).
  * Colores validados: ΔE CVD 34 entre sí y contraste ≥ 3:1 sobre blanco.
  */
-export const PAIN_SERIES = {
-  before: { label: "Al inicio", color: "#EA6A2E" },
-  after: { label: "Al final", color: "#3B3BF2" },
-} as const;
+import { PAIN_SERIES } from "@/lib/constants";
+
+export { PAIN_SERIES };
 
 export type PainSeriesKey = keyof typeof PAIN_SERIES;
 

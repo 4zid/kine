@@ -1,3 +1,5 @@
+import { Suspense } from "react";
+import { AuthFlashToast } from "@/components/auth/auth-flash-toast";
 import { AppShell } from "@/components/shell/app-shell";
 import { requireProfessional } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
@@ -29,6 +31,9 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
   return (
     <AppShell professional={professional} recentPatients={recentPatients} activeCount={count ?? 0}>
       {children}
+      <Suspense fallback={null}>
+        <AuthFlashToast />
+      </Suspense>
     </AppShell>
   );
 }

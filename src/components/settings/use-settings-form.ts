@@ -4,7 +4,8 @@ import { useActionState, useState } from "react";
 import { toast } from "sonner";
 import { initialActionState, type ActionState } from "@/lib/types";
 
-export type FormAction = (prev: ActionState, formData: FormData) => Promise<ActionState>;
+import type { FormAction } from "@/lib/types";
+export type { FormAction };
 
 type FormValues = Record<string, string | string[]>;
 

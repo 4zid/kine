@@ -4,6 +4,9 @@ export const PUBLIC_PATHS = ["/bienvenida", "/registro", "/ingresar", "/recupera
 /** Rutas de autenticación: si ya hay sesión, se redirige al inicio. */
 export const AUTH_ONLY_PATHS = ["/bienvenida", "/registro", "/ingresar", "/recuperar"];
 
+/** Cookie de UX: este navegador ya vio el recorrido o tiene cuenta (no es sensible). */
+export const ONBOARDED_COOKIE = "kine_onboarded";
+
 export const HOME_PATH = "/inicio";
 export const LOGIN_PATH = "/ingresar";
 

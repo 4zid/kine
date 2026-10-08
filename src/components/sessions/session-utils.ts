@@ -42,10 +42,7 @@ export type SessionFormValues = {
 // ---------------------------------------------------------------------------
 // Series del gráfico (dolor al inicio / al final). Colores validados (ΔE CVD 34, ≥3:1).
 // ---------------------------------------------------------------------------
-export const PAIN_SERIES = {
-  before: { label: "Al inicio", color: "#EA6A2E" },
-  after: { label: "Al final", color: "#3B3BF2" },
-} as const;
+export { PAIN_SERIES } from "@/lib/constants";
 
 // ---------------------------------------------------------------------------
 // Fechas deterministas

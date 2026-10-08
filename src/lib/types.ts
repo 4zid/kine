@@ -97,3 +97,6 @@ export type ActionState<T = undefined> = {
 };
 
 export const initialActionState: ActionState = { ok: false };
+
+/** Firma de una Server Action usada con useActionState. */
+export type FormAction<T = undefined> = (prev: ActionState<T>, formData: FormData) => Promise<ActionState<T>>;

@@ -10,7 +10,8 @@ import { cn } from "@/lib/utils";
 import type { ChecklistStep } from "@/components/dashboard/data";
 import { FramedCard } from "@/components/dashboard/framed-card";
 
-export type FormAction = (prev: ActionState, formData: FormData) => Promise<ActionState>;
+import type { FormAction } from "@/lib/types";
+export type { FormAction };
 
 /** Guía "Primeros pasos" (visible hasta que el profesional la oculta). */
 export function OnboardingChecklist({
