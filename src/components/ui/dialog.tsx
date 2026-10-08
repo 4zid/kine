@@ -28,6 +28,20 @@ const widths = { sm: "max-w-md", md: "max-w-xl", lg: "max-w-2xl", xl: "max-w-4xl
  * hijo): así el `autoFocus` de React del contenido encuentra el diálogo ya visible y funciona.
  * Al cerrar devuelve el foco al elemento que lo abrió.
  */
+/** Marca los cierres hechos por el componente: su evento `close` (asíncrono) no debe llamar a onClose. */
+const PROGRAMMATIC_CLOSE = "kineClosing";
+
+function closeAndRestoreFocus(dialog: HTMLDialogElement, opener: { current: HTMLElement | null }) {
+  if (!dialog.open) return;
+  dialog.dataset[PROGRAMMATIC_CLOSE] = "true";
+  dialog.close();
+  const target = opener.current;
+  opener.current = null;
+  if (target?.isConnected && (document.activeElement === document.body || dialog.contains(document.activeElement))) {
+    target.focus({ preventScroll: true });
+  }
+}
+
 function DialogSync({ open }: { open: boolean }) {
   const ref = useRef<HTMLSpanElement>(null);
   const opener = useRef<HTMLElement | null>(null);
@@ -40,15 +54,16 @@ function DialogSync({ open }: { open: boolean }) {
       opener.current = active instanceof HTMLElement && active !== document.body ? active : null;
       dialog.showModal();
     }
-    if (!open && dialog.open) {
-      dialog.close();
-      const target = opener.current;
-      opener.current = null;
-      if (target?.isConnected && (document.activeElement === document.body || dialog.contains(document.activeElement))) {
-        target.focus({ preventScroll: true });
-      }
-    }
+    if (!open) closeAndRestoreFocus(dialog, opener);
   }, [open]);
+
+  // Si se desmonta abierto (p. ej. el padre lo quita para cerrarlo), también devuelve el foco.
+  useLayoutEffect(() => {
+    const dialog = ref.current?.parentElement;
+    return () => {
+      if (dialog instanceof HTMLDialogElement) closeAndRestoreFocus(dialog, opener);
+    };
+  }, []);
 
   return <span ref={ref} hidden />;
 }
@@ -110,7 +125,15 @@ export function Dialog({
       aria-labelledby={title ? titleId : undefined}
       aria-label={title ? undefined : ariaLabel}
       aria-describedby={description ? descId : undefined}
-      onClose={onClose}
+      onClose={(e) => {
+        // Solo cierres nativos (p. ej. Esc repetido sin activación del usuario): sincronizar el estado.
+        const el = e.currentTarget;
+        if (el.dataset[PROGRAMMATIC_CLOSE]) {
+          delete el.dataset[PROGRAMMATIC_CLOSE];
+          return;
+        }
+        if (!el.open) onClose();
+      }}
       onCancel={(e) => {
         e.preventDefault();
         onClose();

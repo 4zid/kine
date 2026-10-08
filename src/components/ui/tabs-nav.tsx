@@ -61,9 +61,9 @@ export function TabsNav({ items, className }: { items: TabItem[]; className?: st
 
   const mask =
     edges.start && edges.end
-      ? "[mask-image:linear-gradient(to_right,transparent,black_28px,black_calc(100%-28px),transparent)]"
+      ? "[mask-image:linear-gradient(to_right,transparent,black_28px,black_calc(100%_-_28px),transparent)]"
       : edges.end
-        ? "[mask-image:linear-gradient(to_right,black_calc(100%-36px),transparent)]"
+        ? "[mask-image:linear-gradient(to_right,black_calc(100%_-_36px),transparent)]"
         : edges.start
           ? "[mask-image:linear-gradient(to_right,transparent,black_36px)]"
           : undefined;
