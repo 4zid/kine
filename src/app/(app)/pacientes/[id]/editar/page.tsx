@@ -18,8 +18,8 @@ export default async function EditarPacientePage({ params }: PageProps<"/pacient
   return (
     <div className="flex flex-col gap-6">
       <div>
-        <h2 className="display text-[28px] font-medium text-ink sm:text-[32px]">Editar datos del paciente</h2>
-        <p className="mt-1.5 text-[15px] text-muted">
+        <h2 className="display text-2xl font-medium text-ink">Editar datos del paciente</h2>
+        <p className="mt-1 text-[15px] text-muted">
           Datos personales, cobertura, contacto de emergencia y motivo de consulta.
         </p>
       </div>

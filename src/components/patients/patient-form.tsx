@@ -2,6 +2,7 @@
 
 import { ArrowRight, NotebookPen, ShieldCheck, Siren, Stethoscope, UserRound } from "lucide-react";
 import Link from "next/link";
+import { unstable_isUnrecognizedActionError, unstable_rethrow } from "next/navigation";
 import {
   useActionState,
   useEffect,
@@ -27,7 +28,7 @@ import {
   type PatientFieldName,
   type PatientFormValues,
   type PatientTextField,
-} from "@/components/patients/patient-schema";
+} from "@/components/patients/patient-fields";
 import { TagsInput } from "@/components/patients/tags-input";
 import {
   DOCUMENT_TYPES,
@@ -177,9 +178,31 @@ export type PatientFormProps = {
   cancelHref: string;
 };
 
-/** Formulario de alta / edición de paciente (controlado: no pierde lo escrito si hay errores). */
+/** Animación de scroll respetando "reducir movimiento". */
+function scrollBehavior(): ScrollBehavior {
+  return window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth";
+}
+
+/**
+ * Formulario de alta / edición de paciente (controlado: no pierde lo escrito si hay errores).
+ * Si la acción falla sin respuesta (sin conexión, sesión vencida en el proxy, versión nueva
+ * desplegada) devuelve un error en lugar de lanzar, para que el error.tsx no desmonte el formulario.
+ */
 export function PatientForm({ mode, action, patient, today, cancelHref }: PatientFormProps) {
-  const [state, dispatch, isPending] = useActionState(action, initialActionState);
+  const [state, dispatch, isPending] = useActionState<ActionState, FormData>(async (prev, formData) => {
+    try {
+      return await action(prev, formData);
+    } catch (err) {
+      // Mantiene funcionando redirect() (alta y edición exitosas redirigen a la ficha).
+      unstable_rethrow(err);
+      return {
+        ok: false,
+        message: unstable_isUnrecognizedActionError(err)
+          ? "Hay una versión nueva de kine. Copiá lo que escribiste y recargá la página."
+          : "No pudimos guardar. Revisá tu conexión e intentá de nuevo: tus datos siguen acá.",
+      };
+    }
+  }, initialActionState);
   const [, startTransition] = useTransition();
   const [values, setValues] = useState<PatientFormValues>(() => patientFormValues(patient));
   const [tags, setTags] = useState<string[]>(() => patient?.tags ?? []);
@@ -203,7 +226,7 @@ export function PatientForm({ mode, action, patient, today, cancelHref }: Patien
     if (state.message) toast.error(state.message, { position: "top-center" });
     const firstInvalid = formRef.current?.querySelector<HTMLElement>('[aria-invalid="true"]');
     if (firstInvalid) {
-      firstInvalid.scrollIntoView({ behavior: "smooth", block: "center" });
+      firstInvalid.scrollIntoView({ behavior: scrollBehavior(), block: "center" });
       firstInvalid.focus({ preventScroll: true });
     }
   }, [state]);
@@ -291,7 +314,7 @@ export function PatientForm({ mode, action, patient, today, cancelHref }: Patien
                       {hasError ? <span aria-label="Con errores" className="size-2 shrink-0 rounded-full bg-danger" /> : null}
                       <span className="truncate">{s.title}</span>
                     </span>
-                    <span className={cn("tabular text-xs", filled > 0 ? "text-ink-2" : "text-subtle")}>
+                    <span className={cn("tabular text-xs", filled > 0 ? "text-ink-2" : "text-muted")}>
                       {filled}/{total}
                     </span>
                   </a>
@@ -306,6 +329,10 @@ export function PatientForm({ mode, action, patient, today, cancelHref }: Patien
           <SectionCard {...SECTIONS[0]}>
             <fieldset>
               <legend className="mb-3 text-[15px] text-muted">¿Cómo se llama?</legend>
+              {/* En mobile el pie fijo no tiene lugar para esta aclaración. */}
+              <p className="-mt-1 mb-4 text-[13px] text-muted sm:hidden">
+                Solo nombre y apellido son obligatorios. El resto lo podés completar después.
+              </p>
               <div className="grid gap-x-8 gap-y-5 sm:grid-cols-2">
                 <div>
                   <label htmlFor="first_name" className="sr-only">
@@ -315,6 +342,7 @@ export function PatientForm({ mode, action, patient, today, cancelHref }: Patien
                     {...bind("first_name")}
                     placeholder="Nombre"
                     aria-required="true"
+                    aria-describedby={errorOf("first_name") ? "first_name-error" : undefined}
                     autoFocus={!isEdit}
                     autoCapitalize="words"
                     className={cn(
@@ -323,7 +351,7 @@ export function PatientForm({ mode, action, patient, today, cancelHref }: Patien
                     )}
                   />
                   {errorOf("first_name") ? (
-                    <p role="alert" className="mt-2 text-[13px] text-danger">
+                    <p id="first_name-error" role="alert" className="mt-2 text-[13px] text-danger">
                       {errorOf("first_name")}
                     </p>
                   ) : null}
@@ -336,6 +364,7 @@ export function PatientForm({ mode, action, patient, today, cancelHref }: Patien
                     {...bind("last_name")}
                     placeholder="Apellido"
                     aria-required="true"
+                    aria-describedby={errorOf("last_name") ? "last_name-error" : undefined}
                     autoCapitalize="words"
                     className={cn(
                       "border-b-[1.5px] pb-2.5 transition-colors",
@@ -343,7 +372,7 @@ export function PatientForm({ mode, action, patient, today, cancelHref }: Patien
                     )}
                   />
                   {errorOf("last_name") ? (
-                    <p role="alert" className="mt-2 text-[13px] text-danger">
+                    <p id="last_name-error" role="alert" className="mt-2 text-[13px] text-danger">
                       {errorOf("last_name")}
                     </p>
                   ) : null}
@@ -352,7 +381,12 @@ export function PatientForm({ mode, action, patient, today, cancelHref }: Patien
             </fieldset>
 
             <div className="mt-8 grid gap-x-5 gap-y-5 sm:grid-cols-2">
-              <Field label="Documento" htmlFor="document_number" error={errorOf("document_number") ?? errorOf("document_type")}>
+              <Field
+                label="Documento"
+                htmlFor="document_number"
+                optional
+                error={errorOf("document_number") ?? errorOf("document_type")}
+              >
                 <div className="flex gap-2">
                   <div className="w-[7.5rem] shrink-0">
                     <Select {...bind("document_type")} aria-label="Tipo de documento" id="document_type">
@@ -366,7 +400,7 @@ export function PatientForm({ mode, action, patient, today, cancelHref }: Patien
                   <Input
                     {...bind("document_number")}
                     inputMode={numericDocument ? "numeric" : "text"}
-                    placeholder={numericDocument ? "30123456" : "Número"}
+                    placeholder={numericDocument ? "Ej.: 30.123.456" : "Número"}
                   />
                 </div>
               </Field>
@@ -374,6 +408,7 @@ export function PatientForm({ mode, action, patient, today, cancelHref }: Patien
               <Field
                 label="Fecha de nacimiento"
                 htmlFor="birth_date"
+                optional
                 error={errorOf("birth_date")}
                 hint={age != null ? undefined : "Con la fecha calculamos la edad."}
               >
@@ -387,7 +422,7 @@ export function PatientForm({ mode, action, patient, today, cancelHref }: Patien
                 </div>
               </Field>
 
-              <Field label="Sexo" error={errorOf("sex")} className="sm:col-span-2">
+              <Field label="Sexo" optional error={errorOf("sex")} className="sm:col-span-2">
                 <ChipGroup
                   aria-label="Sexo"
                   options={SEX_OPTIONS}
@@ -405,12 +440,12 @@ export function PatientForm({ mode, action, patient, today, cancelHref }: Patien
                 <Input {...bind("occupation")} placeholder="Ej.: docente, albañil, administrativa" />
               </Field>
 
-              <Field label="Teléfono" htmlFor="phone" error={errorOf("phone")}>
-                <Input {...bind("phone")} type="tel" inputMode="tel" placeholder="11 5555-5555" />
+              <Field label="Teléfono" htmlFor="phone" optional error={errorOf("phone")}>
+                <Input {...bind("phone")} type="tel" inputMode="tel" placeholder="Ej.: 11 5555-1234" />
               </Field>
 
               <Field label="Email" htmlFor="email" optional error={errorOf("email")}>
-                <Input {...bind("email")} type="email" inputMode="email" placeholder="nombre@correo.com" />
+                <Input {...bind("email")} type="email" inputMode="email" placeholder="Ej.: nombre@correo.com" />
               </Field>
 
               <Field label="Dirección" htmlFor="address" optional error={errorOf("address")}>
@@ -421,7 +456,7 @@ export function PatientForm({ mode, action, patient, today, cancelHref }: Patien
                 <Input {...bind("city")} placeholder="Ej.: CABA, Rosario" />
               </Field>
 
-              <Field label="Lateralidad" error={errorOf("dominant_side")} className="sm:col-span-2">
+              <Field label="Lateralidad" optional error={errorOf("dominant_side")} className="sm:col-span-2">
                 <ChipGroup
                   aria-label="Lateralidad"
                   options={DOMINANT_SIDE_OPTIONS}
@@ -436,7 +471,13 @@ export function PatientForm({ mode, action, patient, today, cancelHref }: Patien
           {/* Cobertura */}
           <SectionCard {...SECTIONS[1]}>
             <div className="grid gap-x-5 gap-y-5 sm:grid-cols-2">
-              <Field label="Obra social / prepaga" htmlFor="health_insurance" error={errorOf("health_insurance")} className="sm:col-span-2">
+              <Field
+                label="Obra social / prepaga"
+                htmlFor="health_insurance"
+                optional
+                error={errorOf("health_insurance")}
+                className="sm:col-span-2"
+              >
                 <Input {...bind("health_insurance")} list="health-insurance-options" placeholder="Escribí o elegí una" />
                 <datalist id="health-insurance-options">
                   {HEALTH_INSURANCE_SUGGESTIONS.map((h) => (
@@ -459,11 +500,11 @@ export function PatientForm({ mode, action, patient, today, cancelHref }: Patien
               <Field label="Plan" htmlFor="health_insurance_plan" optional error={errorOf("health_insurance_plan")}>
                 <Input {...bind("health_insurance_plan")} placeholder="Ej.: 310, SMG20" />
               </Field>
-              <Field label="Nº de afiliado" htmlFor="health_insurance_number" optional error={errorOf("health_insurance_number")}>
+              <Field label="N.º de afiliado" htmlFor="health_insurance_number" optional error={errorOf("health_insurance_number")}>
                 <Input {...bind("health_insurance_number")} placeholder="Número de credencial" />
               </Field>
               <Field label="Médico derivante" htmlFor="referring_doctor" optional error={errorOf("referring_doctor")} className="sm:col-span-2">
-                <Input {...bind("referring_doctor")} placeholder="Ej.: Dra. Paula Méndez (traumatóloga)" />
+                <Input {...bind("referring_doctor")} placeholder="Ej.: traumatólogo/a que lo derivó" />
               </Field>
             </div>
           </SectionCard>
@@ -471,13 +512,25 @@ export function PatientForm({ mode, action, patient, today, cancelHref }: Patien
           {/* Contacto de emergencia */}
           <SectionCard {...SECTIONS[2]}>
             <div className="grid gap-x-5 gap-y-5 sm:grid-cols-3">
-              <Field label="Nombre" htmlFor="emergency_contact_name" error={errorOf("emergency_contact_name")} className="sm:col-span-3 md:col-span-1">
+              <Field
+                label="Nombre"
+                htmlFor="emergency_contact_name"
+                optional
+                error={errorOf("emergency_contact_name")}
+                className="sm:col-span-3 md:col-span-1"
+              >
                 <Input {...bind("emergency_contact_name")} placeholder="Nombre y apellido" />
               </Field>
-              <Field label="Teléfono" htmlFor="emergency_contact_phone" error={errorOf("emergency_contact_phone")} className="sm:col-span-2 md:col-span-1">
-                <Input {...bind("emergency_contact_phone")} type="tel" inputMode="tel" placeholder="11 5555-5555" />
+              <Field
+                label="Teléfono"
+                htmlFor="emergency_contact_phone"
+                optional
+                error={errorOf("emergency_contact_phone")}
+                className="sm:col-span-2 md:col-span-1"
+              >
+                <Input {...bind("emergency_contact_phone")} type="tel" inputMode="tel" placeholder="Ej.: 11 5555-1234" />
               </Field>
-              <Field label="Vínculo" htmlFor="emergency_contact_relation" error={errorOf("emergency_contact_relation")}>
+              <Field label="Vínculo" htmlFor="emergency_contact_relation" optional error={errorOf("emergency_contact_relation")}>
                 <Input {...bind("emergency_contact_relation")} list="relation-options" placeholder="Ej.: pareja" />
                 <datalist id="relation-options">
                   {RELATION_SUGGESTIONS.map((r) => (
@@ -497,17 +550,20 @@ export function PatientForm({ mode, action, patient, today, cancelHref }: Patien
                 </label>
                 <Textarea
                   {...bind("consultation_reason")}
+                  aria-describedby={errorOf("consultation_reason") ? "consultation_reason-error" : "consultation_reason-hint"}
                   rows={4}
                   placeholder="Ej.: dolor lumbar hace 3 semanas que empeora al estar sentada mucho tiempo y la despierta a la noche."
                   className="min-h-36 rounded-panel px-5 py-4 text-[17px] leading-relaxed sm:text-[19px]"
                 />
                 <div className="flex items-center justify-between gap-3">
                   {errorOf("consultation_reason") ? (
-                    <p role="alert" className="text-[13px] text-danger">
+                    <p id="consultation_reason-error" role="alert" className="text-[13px] text-danger">
                       {errorOf("consultation_reason")}
                     </p>
                   ) : (
-                    <p className="text-[13px] text-muted">Con sus palabras: qué siente, desde cuándo y qué lo empeora.</p>
+                    <p id="consultation_reason-hint" className="text-[13px] text-muted">
+                      Opcional. Con sus palabras: qué siente, desde cuándo y qué lo empeora.
+                    </p>
                   )}
                   <Counter value={values.consultation_reason} max={PATIENT_LIMITS.consultation_reason} />
                 </div>
@@ -523,6 +579,7 @@ export function PatientForm({ mode, action, patient, today, cancelHref }: Patien
                 <Field
                   label="Inicio de los síntomas"
                   htmlFor="onset_date"
+                  optional
                   error={errorOf("onset_date")}
                   hint={onsetRelative ? `Empezó ${onsetRelative}` : "Aproximado, si no sabe la fecha exacta."}
                 >
@@ -598,7 +655,7 @@ export function PatientForm({ mode, action, patient, today, cancelHref }: Patien
                     ? "Los cambios se aplican a toda la ficha del paciente."
                     : "Solo nombre y apellido son obligatorios. El resto lo podés completar después."}
               </p>
-              <Link href={cancelHref} className={buttonClasses("ghost", "lg", "px-5 text-muted hover:text-ink")}>
+              <Link href={cancelHref} className={buttonClasses("ghost", "lg", "px-5 text-ink-2 hover:text-ink")}>
                 Cancelar
               </Link>
               <SubmitButton

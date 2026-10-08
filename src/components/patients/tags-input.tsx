@@ -1,7 +1,7 @@
 "use client";
 
 import { Plus, X } from "lucide-react";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 
 type Props = {
@@ -31,6 +31,7 @@ export function TagsInput({
   placeholder = "Escribí y apretá Enter",
 }: Props) {
   const [draft, setDraft] = useState("");
+  const inputRef = useRef<HTMLInputElement>(null);
   const full = value.length >= max;
 
   const addMany = (raws: string[]) => {
@@ -52,7 +53,7 @@ export function TagsInput({
     <div className="flex flex-col gap-3">
       <div
         className={cn(
-          "flex min-h-12 flex-wrap items-center gap-1.5 rounded-field bg-surface-2 px-2 py-2 transition-[background-color,box-shadow] focus-within:bg-surface focus-within:shadow-[0_0_0_1.5px_var(--color-ink)]",
+          "flex min-h-12 flex-wrap items-center gap-2 rounded-field bg-surface-2 px-2 py-2 transition-[background-color,box-shadow] focus-within:bg-surface focus-within:shadow-[0_0_0_1.5px_var(--color-ink)]",
           invalid && "shadow-[0_0_0_1.5px_var(--color-danger)]",
         )}
       >
@@ -64,15 +65,20 @@ export function TagsInput({
             #{tag}
             <button
               type="button"
-              onClick={() => remove(tag)}
+              onClick={() => {
+                remove(tag);
+                // El botón desaparece con la etiqueta: el foco pasa al campo para seguir.
+                inputRef.current?.focus();
+              }}
               aria-label={`Quitar etiqueta ${tag}`}
-              className="inline-flex size-6 items-center justify-center rounded-full text-white/70 transition-colors hover:bg-white/15 hover:text-white"
+              className="relative inline-flex size-6 items-center justify-center rounded-full text-white/80 transition-colors after:absolute after:-inset-2 hover:bg-white/15 hover:text-white focus-visible:outline-white focus-visible:outline-offset-[-2px]"
             >
               <X className="size-3.5" />
             </button>
           </span>
         ))}
         <input
+          ref={inputRef}
           id={id}
           value={draft}
           disabled={full}
@@ -105,18 +111,21 @@ export function TagsInput({
           placeholder={full ? `Máximo ${max} etiquetas` : value.length === 0 ? placeholder : "Agregar otra…"}
           aria-invalid={invalid || undefined}
           autoComplete="off"
-          className="h-8 min-w-[10rem] flex-1 bg-transparent px-2 text-[15px] text-ink outline-none placeholder:text-subtle disabled:cursor-not-allowed"
+          className="h-8 min-w-[10rem] flex-1 bg-transparent px-2 text-base text-ink outline-none placeholder:text-muted disabled:cursor-not-allowed sm:text-[15px]"
         />
       </div>
       {pending.length > 0 && !full ? (
-        <div className="flex flex-wrap items-center gap-1.5">
-          <span className="mr-1 text-[13px] text-muted">Sugeridas:</span>
+        <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Etiquetas sugeridas">
+          <span className="mr-1 text-[13px] text-muted" aria-hidden>
+            Sugeridas:
+          </span>
           {pending.map((s) => (
             <button
               key={s}
               type="button"
               onClick={() => add(s)}
-              className="inline-flex h-8 items-center gap-1 rounded-full bg-surface-2 px-3 text-[13px] font-medium text-ink-2 transition-colors hover:bg-surface-3"
+              aria-label={`Agregar etiqueta ${s}`}
+              className="relative inline-flex h-8 items-center gap-1 rounded-full bg-surface-2 px-3 text-[13px] font-medium text-ink-2 transition-colors after:absolute after:-inset-1 hover:bg-surface-3"
             >
               <Plus className="size-3.5 text-muted" aria-hidden />
               {s}

@@ -65,13 +65,13 @@ export function NextStepsCard({
       <div className="flex flex-col gap-6">
         <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between md:gap-8">
           <div>
-            <p className={cn("text-sm", welcome ? "text-white/70" : "text-muted")}>
+            <p className={cn("text-sm", welcome ? "text-white/85" : "text-muted")}>
               {welcome ? "Paciente creado" : "Primeros pasos"} · {completed} de {steps.length}
             </p>
             <h2 id="next-steps-title" className="display mt-2 text-[28px] sm:text-[32px]">
               {welcome ? (
                 <>
-                  <span className="font-light text-white/75">¡Listo! {firstName}</span>
+                  <span className="font-light text-white/85">¡Listo! {firstName}</span>
                   <br />
                   <span className="font-medium">ya está en tu lista</span>
                 </>
@@ -122,20 +122,20 @@ export function NextStepsCard({
                     {s.done ? <Check className="size-[18px]" aria-hidden /> : <Icon className="size-[18px]" strokeWidth={1.8} aria-hidden />}
                   </span>
                   <span className="min-w-0 flex-1">
-                    <span className={cn("block text-[13px]", welcome ? "text-white/60" : "text-muted")}>
+                    <span className={cn("block text-[13px]", welcome ? "text-white/80" : "text-muted")}>
                       Paso {i + 1}
                       {s.done ? " · Hecho" : ""}
                     </span>
                     <span className={cn("block text-[15px] font-medium", welcome ? "text-white" : "text-ink", s.done && "opacity-70")}>
                       {s.title}
                     </span>
-                    <span className={cn("mt-0.5 block text-[13px]", welcome ? "text-white/65" : "text-muted")}>{s.text}</span>
+                    <span className={cn("mt-0.5 block text-[13px]", welcome ? "text-white/80" : "text-muted")}>{s.text}</span>
                   </span>
                   <ArrowRight
                     aria-hidden
                     className={cn(
                       "mt-1 size-4 shrink-0 transition-transform group-hover:translate-x-0.5",
-                      welcome ? "text-white/60" : "text-subtle",
+                      welcome ? "text-white/70" : "text-muted",
                     )}
                   />
                 </Link>

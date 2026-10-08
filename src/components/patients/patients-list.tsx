@@ -5,7 +5,7 @@ import { PainBadge } from "@/components/ui/badge";
 import { PatientActionsMenu } from "@/components/patients/patient-actions-menu";
 import { ageLabel, excerpt, plural, sexLabel, statusMeta } from "@/components/patients/format";
 import type { PatientListItem } from "@/lib/data/patients-types";
-import { cn, formatRelativeDay, fullName } from "@/lib/utils";
+import { cn, formatRelativeDay, fullName, parseDateOnly, toISODate, todayISO } from "@/lib/utils";
 
 /** Grillas de columnas según el ancho del contenedor (container queries). */
 const FULL_COLS = "@min-[880px]:grid-cols-[minmax(0,1.25fr)_minmax(0,1.5fr)_minmax(0,0.75fr)_8.5rem_7.5rem_2.5rem]";
@@ -16,7 +16,7 @@ function ColumnHeaders() {
     <div
       aria-hidden
       className={cn(
-        "hidden gap-5 px-4 pt-3 pb-2 text-[12px] font-medium tracking-[0.08em] text-subtle uppercase @min-[880px]:grid",
+        "hidden gap-5 px-4 pt-3 pb-2 text-[12px] font-medium tracking-[0.08em] text-muted uppercase @min-[880px]:grid",
         FULL_COLS,
       )}
     >
@@ -24,10 +24,27 @@ function ColumnHeaders() {
       <span>Motivo de consulta</span>
       <span>Obra social</span>
       <span>Última sesión</span>
-      <span>Dolor actual</span>
+      <span>Dolor (mapa)</span>
       <span />
     </div>
   );
+}
+
+/** Antigüedad compacta de un registro: "hoy", "ayer", "hace 3 días", "hace 2 sem.", "hace 4 meses". */
+function shortAge(value: string): string {
+  const days = Math.round(
+    (parseDateOnly(todayISO()).getTime() - parseDateOnly(toISODate(new Date(value))).getTime()) / 86_400_000,
+  );
+  if (days <= 0) return "hoy";
+  if (days === 1) return "ayer";
+  if (days < 7) return `hace ${days} días`;
+  if (days < 30) return `hace ${Math.round(days / 7)} sem.`;
+  if (days < 365) {
+    const m = Math.round(days / 30);
+    return `hace ${m} ${m === 1 ? "mes" : "meses"}`;
+  }
+  const y = Math.round(days / 365);
+  return `hace ${y} ${y === 1 ? "año" : "años"}`;
 }
 
 function PatientRow({ patient }: { patient: PatientListItem }) {
@@ -36,6 +53,7 @@ function PatientRow({ patient }: { patient: PatientListItem }) {
   const reason = excerpt(patient.consultation_reason ?? patient.kinesic_diagnosis ?? patient.medical_diagnosis, 160);
   const status = statusMeta(patient.status);
   const lastSession = patient.last_session_date ? formatRelativeDay(patient.last_session_date) : null;
+  const painAge = patient.max_pain != null && patient.pain_recorded_at ? shortAge(patient.pain_recorded_at) : null;
 
   return (
     <li className="group relative rounded-card bg-surface p-5 transition-colors @min-[600px]:rounded-[20px] @min-[600px]:bg-transparent @min-[600px]:px-4 @min-[600px]:py-3.5 @min-[600px]:hover:bg-surface-2/80">
@@ -62,7 +80,7 @@ function PatientRow({ patient }: { patient: PatientListItem }) {
             </p>
             {/* En filas compactas, el motivo va debajo del nombre. */}
             <p className="hidden truncate text-[13px] text-ink-2 @min-[600px]:block @min-[880px]:hidden">
-              {reason ?? <span className="text-subtle">Sin motivo de consulta</span>}
+              {reason ?? <span className="text-muted">Sin motivo de consulta</span>}
             </p>
           </div>
         </div>
@@ -71,7 +89,7 @@ function PatientRow({ patient }: { patient: PatientListItem }) {
         <p
           className={cn(
             "line-clamp-2 text-sm leading-relaxed @min-[600px]:hidden @min-[880px]:block @min-[880px]:truncate",
-            reason ? "text-ink-2" : "text-subtle",
+            reason ? "text-ink-2" : "text-muted",
           )}
         >
           {reason ?? "Sin motivo de consulta cargado"}
@@ -83,7 +101,7 @@ function PatientRow({ patient }: { patient: PatientListItem }) {
             {patient.health_insurance ? (
               <span className="text-ink-2">{patient.health_insurance}</span>
             ) : (
-              <span className="text-subtle">Sin obra social</span>
+              <span className="text-muted">Sin obra social</span>
             )}
           </span>
 
@@ -93,7 +111,7 @@ function PatientRow({ patient }: { patient: PatientListItem }) {
             <span
               className={cn(
                 "inline-flex items-center gap-1.5 @min-[600px]:text-sm",
-                lastSession ? "text-ink-2" : "text-subtle",
+                lastSession ? "text-ink-2" : "text-muted",
               )}
             >
               <CalendarDays aria-hidden className="size-3.5 text-muted @min-[600px]:hidden" />
@@ -108,9 +126,19 @@ function PatientRow({ patient }: { patient: PatientListItem }) {
           </span>
 
           <span className="ml-auto flex items-center gap-2 @min-[600px]:ml-0">
+            <span className="sr-only">Dolor máximo por zona en el mapa corporal: </span>
             <PainBadge intensity={patient.max_pain} size="sm" />
+            {patient.max_pain != null ? <span className="sr-only"> de 10</span> : null}
             {patient.max_pain != null && patient.active_regions > 0 ? (
-              <span className="text-xs whitespace-nowrap text-muted">{plural(patient.active_regions, "zona", "zonas")}</span>
+              <span className="flex flex-col text-xs leading-tight whitespace-nowrap text-muted">
+                <span>{plural(patient.active_regions, "zona", "zonas")}</span>
+                {painAge ? (
+                  <span title={`Registrado ${formatRelativeDay(patient.pain_recorded_at)}`}>
+                    <span className="sr-only">, registrado </span>
+                    {painAge}
+                  </span>
+                ) : null}
+              </span>
             ) : patient.max_pain === 0 ? (
               <span className="text-xs whitespace-nowrap text-muted">sin dolor</span>
             ) : null}

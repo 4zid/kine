@@ -41,6 +41,40 @@ function isStatus(value: string | null): value is PatientStatus {
   return value === "active" || value === "discharged" || value === "archived";
 }
 
+type Supabase = Awaited<ReturnType<typeof createClient>>;
+
+/**
+ * Para cada paciente de la página, la fecha del último registro de la zona con el dolor máximo
+ * (el "Dolor actual" de la lista sale del mapa corporal y puede estar desactualizado).
+ * Decorativo: si falla, la lista se muestra igual sin la antigüedad.
+ */
+async function painFreshness(supabase: Supabase, patients: { id: string; max: number }[]): Promise<Map<string, string>> {
+  const out = new Map<string, string>();
+  if (patients.length === 0) return out;
+  const maxById = new Map(patients.map((p) => [p.id, p.max]));
+  const { data, error } = await supabase
+    .from("patient_pain_current")
+    .select("patient_id, intensity, recorded_at")
+    .in(
+      "patient_id",
+      patients.map((p) => p.id),
+    )
+    .neq("status", "resolved")
+    .gt("intensity", 0)
+    .order("recorded_at", { ascending: false })
+    .limit(1000);
+  if (error) {
+    console.error("[pacientes] error al leer la antigüedad del dolor", error.message);
+    return out;
+  }
+  for (const r of data ?? []) {
+    if (!r.patient_id || !r.recorded_at || out.has(r.patient_id)) continue;
+    // Ordenado por fecha descendente: el primero con la intensidad máxima es el más reciente.
+    if (r.intensity === maxById.get(r.patient_id)) out.set(r.patient_id, r.recorded_at);
+  }
+  return out;
+}
+
 /** Listado paginado de pacientes desde la vista `patient_overview` (la RLS filtra por profesional). */
 export async function listPatients(params: PatientListParams): Promise<PatientListResult> {
   const supabase = await createClient();
@@ -109,10 +143,10 @@ export async function listPatients(params: PatientListParams): Promise<PatientLi
         .order("last_name", { ascending: true });
       break;
     default:
-      // Actividad reciente: primero los que todavía no tuvieron sesión (recién cargados),
-      // después por la última sesión.
+      // Actividad reciente: la última vez que se tocó algo del paciente (sus datos, una sesión
+      // o un registro de dolor), así el que atendiste hoy queda arriba.
       query = query
-        .order("last_session_date", { ascending: false, nullsFirst: true })
+        .order("last_activity_at", { ascending: false, nullsFirst: false })
         .order("created_at", { ascending: false });
   }
 
@@ -124,8 +158,14 @@ export async function listPatients(params: PatientListParams): Promise<PatientLi
     return { ...base, items: [], error: "No pudimos cargar tus pacientes." };
   }
 
+  const rows = data ?? [];
+  const painRecordedAt = await painFreshness(
+    supabase,
+    rows.filter((r) => r.id && r.max_pain != null).map((r) => ({ id: r.id as string, max: r.max_pain as number })),
+  );
+
   const items: PatientListItem[] = [];
-  for (const row of data ?? []) {
+  for (const row of rows) {
     if (!row.id) continue;
     items.push({
       id: row.id,
@@ -145,6 +185,7 @@ export async function listPatients(params: PatientListParams): Promise<PatientLi
       session_count: row.session_count ?? 0,
       max_pain: row.max_pain,
       active_regions: row.active_regions ?? 0,
+      pain_recorded_at: painRecordedAt.get(row.id) ?? null,
     });
   }
 

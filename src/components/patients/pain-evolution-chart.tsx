@@ -135,7 +135,7 @@ export function PainEvolutionChart({ points: allPoints, className }: { points: P
                 stroke="var(--color-line)"
                 strokeDasharray={v === 0 ? undefined : "3 5"}
               />
-              <text x={PAD.left - 10} y={yAt(v) + 4} textAnchor="end" className="fill-subtle text-[11px] tabular-nums">
+              <text x={PAD.left - 10} y={yAt(v) + 4} textAnchor="end" className="fill-muted text-[11px] tabular-nums">
                 {v}
               </text>
             </g>
@@ -240,12 +240,12 @@ export function PainEvolutionChart({ points: allPoints, className }: { points: P
             className="pointer-events-none absolute z-10 rounded-xl bg-ink px-3 py-2.5 text-white shadow-float"
             style={{ left: tooltipLeft, top: PAD.top, width: TOOLTIP_W }}
           >
-            <p className="text-[11px] text-white/60">{formatDate(activePoint.date)}</p>
+            <p className="text-[11px] text-white/80">{formatDate(activePoint.date)}</p>
             {PAIN_SERIES_KEYS.map((key) => (
               <p key={key} className="mt-1 flex items-center gap-2 text-[12px]">
                 <span aria-hidden className="h-0.5 w-3 rounded-full" style={{ backgroundColor: SERIES[key].color }} />
                 <span className="tabular font-semibold">{activePoint[key] ?? "—"}</span>
-                <span className="text-white/60">{SERIES[key].label.toLowerCase()}</span>
+                <span className="text-white/80">{SERIES[key].label.toLowerCase()}</span>
               </p>
             ))}
           </div>

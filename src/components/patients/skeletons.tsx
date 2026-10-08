@@ -86,21 +86,20 @@ export function PatientTabSkeleton() {
 /** Esqueleto del encabezado del paciente + pestañas + contenido. */
 export function PatientDetailSkeleton() {
   return (
-    <Loading label="Cargando paciente…" className="flex flex-col gap-6">
+    <Loading label="Cargando paciente…" className="flex flex-col gap-4 sm:gap-6">
       <Bone className="h-9 w-28 bg-surface" />
-      <div className="flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
-        <div className="flex items-center gap-5">
-          <Bone className="size-16 shrink-0 bg-line-strong/60 sm:size-20" />
-          <div className="space-y-3">
-            <Bone className="h-7 w-32 bg-surface" />
-            <Bone className="h-10 w-64 rounded-2xl bg-line-strong/70 sm:h-12 sm:w-80" />
-            <Bone className="h-4 w-72 max-w-full bg-line-strong/60" />
+      <div className="flex flex-col gap-4 sm:gap-5 xl:flex-row xl:items-end xl:justify-between">
+        <div className="flex min-w-0 items-center gap-3.5 sm:gap-5">
+          <Bone className="size-12 shrink-0 bg-line-strong/60 sm:size-20" />
+          <div className="min-w-0 space-y-2 sm:space-y-3">
+            <Bone className="h-6 w-32 bg-surface sm:h-7" />
+            <Bone className="h-8 w-56 max-w-full rounded-2xl bg-line-strong/70 sm:h-12 sm:w-80" />
           </div>
         </div>
-        <div className="flex gap-2">
-          <Bone className="h-11 w-40 bg-surface" />
-          <Bone className="h-11 w-40 bg-line-strong/70" />
-          <Bone className="size-11 bg-surface" />
+        <div className="grid grid-cols-2 gap-2 sm:flex">
+          <Bone className="h-11 bg-surface sm:w-40" />
+          <Bone className="h-11 bg-line-strong/70 sm:w-40" />
+          <Bone className="hidden size-11 bg-surface sm:block" />
         </div>
       </div>
       <Bone className="h-12 w-full max-w-[760px] bg-surface" />

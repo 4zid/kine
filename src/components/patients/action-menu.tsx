@@ -51,6 +51,7 @@ export function ActionMenu({ items, label, pending = false, variant = "ghost", c
   }, []);
 
   const toggle = () => {
+    if (pending) return;
     if (open) return close();
     const rect = triggerRef.current?.getBoundingClientRect();
     if (rect) setPlacement(window.innerHeight - rect.bottom < 300 && rect.top > 300 ? "top" : "bottom");
@@ -104,8 +105,10 @@ export function ActionMenu({ items, label, pending = false, variant = "ghost", c
 
   const itemClass = (tone: "default" | "danger" = "default", disabled?: boolean) =>
     cn(
-      "flex h-11 w-full items-center gap-3 rounded-xl px-3 text-left text-[15px] outline-none transition-colors [&_svg]:size-[18px] [&_svg]:shrink-0",
-      tone === "danger" ? "text-danger hover:bg-danger-50 focus-visible:bg-danger-50" : "text-ink hover:bg-surface-2 focus-visible:bg-surface-2",
+      "flex h-11 w-full items-center gap-3 rounded-xl px-3 text-left text-[15px] outline-none transition-colors focus-visible:ring-2 focus-visible:ring-inset [&_svg]:size-[18px] [&_svg]:shrink-0",
+      tone === "danger"
+        ? "text-ink hover:bg-danger-50 focus-visible:bg-danger-50 focus-visible:ring-danger [&_svg]:text-danger"
+        : "text-ink hover:bg-surface-2 focus-visible:bg-surface-2 focus-visible:ring-ink",
       disabled && "pointer-events-none opacity-45",
     );
 
@@ -118,16 +121,18 @@ export function ActionMenu({ items, label, pending = false, variant = "ghost", c
         aria-haspopup="menu"
         aria-expanded={open}
         aria-controls={open ? menuId : undefined}
-        disabled={pending}
+        // aria-disabled (no disabled): mientras se guarda el botón conserva el foco del teclado.
+        aria-disabled={pending || undefined}
+        aria-busy={pending || undefined}
         onClick={toggle}
         onKeyDown={(e) => {
-          if ((e.key === "ArrowDown" || e.key === "ArrowUp") && !open) {
+          if ((e.key === "ArrowDown" || e.key === "ArrowUp") && !open && !pending) {
             e.preventDefault();
             toggle();
           }
         }}
         className={cn(
-          "inline-flex items-center justify-center rounded-full transition-colors disabled:opacity-60 [&_svg]:size-5",
+          "inline-flex items-center justify-center rounded-full transition-colors aria-disabled:cursor-progress aria-disabled:opacity-60 [&_svg]:size-5",
           variant === "round"
             ? "size-11 bg-surface text-ink shadow-inset hover:bg-surface-2"
             : "size-10 text-muted hover:bg-surface-3/70 hover:text-ink",
@@ -174,8 +179,11 @@ export function ActionMenu({ items, label, pending = false, variant = "ghost", c
                 tabIndex={-1}
                 aria-disabled={item.disabled || undefined}
                 onClick={() => {
-                  close(false);
-                  item.onSelect?.();
+                  // Devolver el foco al disparador antes de actuar: así un diálogo que se abra
+                  // lo recuerda como elemento a restaurar al cerrarse (y el foco no cae en <body>).
+                  close(true);
+                  const select = item.onSelect;
+                  if (select) requestAnimationFrame(() => select());
                 }}
                 className={itemClass(item.tone, item.disabled)}
               >
