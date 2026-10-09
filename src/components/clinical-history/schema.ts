@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { CONDITIONS } from "@/lib/constants";
 import type {
+  ActionState,
   Alcohol,
   ClinicalHistory,
   FunctionalScaleEntry,
@@ -565,7 +566,15 @@ export type SaveHistoryResult = {
   values: HistoryFormValues;
   /** "8 oct, 14:30" (formateado en el servidor para evitar diferencias de hidratación). */
   updatedLabel: string;
+  /** `updated_at` de la fila guardada: versión esperada para el próximo guardado. */
+  updatedAt: string;
 };
+
+/**
+ * Respuesta del guardado. `conflict` = otra pestaña o dispositivo guardó la historia después de
+ * que se cargó este formulario (control de concurrencia optimista con `updated_at`).
+ */
+export type SaveHistoryOutcome = ActionState<SaveHistoryResult> & { conflict?: boolean };
 
 export type HistoryValidation = { ok: true; data: HistoryPayload } | { ok: false; fieldErrors: Record<string, string> };
 

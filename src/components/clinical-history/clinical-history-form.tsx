@@ -1,14 +1,15 @@
 "use client";
 
-import { ArrowRight, Check } from "lucide-react";
+import { ArrowRight, Check, TriangleAlert } from "lucide-react";
 import {
-  useActionState,
   useCallback,
   useEffect,
   useMemo,
   useRef,
   useState,
   useSyncExternalStore,
+  useTransition,
+  type FormEvent,
   type ReactNode,
 } from "react";
 import { notify } from "@/components/clinical-history/notify";
@@ -16,7 +17,7 @@ import { saveClinicalHistory } from "@/app/(app)/pacientes/[id]/historia/actions
 import { Spinner } from "@/components/ui/spinner";
 import { SubmitButton } from "@/components/ui/submit-button";
 import { SectionCard } from "@/components/clinical-history/fields";
-import { SectionIndex } from "@/components/clinical-history/section-index";
+import { SectionIndex, scrollBehavior } from "@/components/clinical-history/section-index";
 import { AlertsSection, BackgroundSection } from "@/components/clinical-history/section-background";
 import { HabitsSection } from "@/components/clinical-history/section-habits";
 import { ExamSection } from "@/components/clinical-history/section-exam";
@@ -32,21 +33,26 @@ import {
   validateHistory,
   type HistoryFormValues,
   type RowKey,
-  type SaveHistoryResult,
+  type SaveHistoryOutcome,
 } from "@/components/clinical-history/schema";
 import { SECTIONS, errorCountBySection, sectionHasData, type SectionId } from "@/components/clinical-history/sections";
 import type { RowSectionProps, SetField } from "@/components/clinical-history/types";
-import type { ActionState } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 export type SaveHistoryAction = (
   patientId: string,
   input: HistoryFormValues,
-) => Promise<ActionState<SaveHistoryResult>>;
+  expectedUpdatedAt: string | null,
+) => Promise<SaveHistoryOutcome>;
 
 type Props = {
   patientId: string;
   initialValues: HistoryFormValues;
+  /**
+   * `updated_at` de la historia tal como se cargó (null si no había fila). Se envía al guardar
+   * para no pisar cambios hechos en otra pestaña o dispositivo (concurrencia optimista).
+   */
+  loadedUpdatedAt: string | null;
   /** "8 oct, 14:30" o null si la historia nunca se editó (formateado en el servidor). */
   lastUpdatedLabel: string | null;
   /** Hoy en Argentina ("YYYY-MM-DD"), calculado en el servidor. */
@@ -87,9 +93,12 @@ function relativeSaved(savedAt: number, now: number): string {
   return `hace ${hours} h`;
 }
 
+const reloadPage = () => window.location.reload();
+
 export function ClinicalHistoryForm({
   patientId,
   initialValues,
+  loadedUpdatedAt,
   lastUpdatedLabel,
   today,
   saveAction = saveClinicalHistory,
@@ -100,7 +109,22 @@ export function ClinicalHistoryForm({
   const [savedAt, setSavedAt] = useState<number | null>(null);
   const [updatedLabel, setUpdatedLabel] = useState(lastUpdatedLabel);
   const [focusErrorToken, setFocusErrorToken] = useState(0);
+  /** Otra pestaña o dispositivo guardó una versión más nueva: hay que recargar para guardar. */
+  const [conflict, setConflict] = useState(false);
+  const [isPending, startTransition] = useTransition();
+  /** Versión (updated_at) sobre la que se edita; se actualiza con cada guardado exitoso. */
+  const versionRef = useRef<string | null>(loadedUpdatedAt);
   const formRef = useRef<HTMLFormElement>(null);
+  const submitRef = useRef<HTMLButtonElement>(null);
+
+  // Mientras guarda, el botón se deshabilita y el navegador le quita el foco: si al terminar el
+  // foco quedó perdido en <body>, vuelve al botón de guardar.
+  const wasPending = useRef(false);
+  useEffect(() => {
+    const finished = wasPending.current && !isPending;
+    wasPending.current = isPending;
+    if (finished && document.activeElement === document.body) submitRef.current?.focus({ preventScroll: true });
+  }, [isPending]);
 
   const now = useSyncExternalStore(subscribeClock, getClock, getServerClock);
   const isMac = useSyncExternalStore(subscribeNothing, isMacPlatform, () => false);
@@ -153,30 +177,40 @@ export function ClinicalHistoryForm({
   // -------------------------------------------------------------------------
   // Guardado
   // -------------------------------------------------------------------------
-  const [, formAction, isPending] = useActionState<ActionState<SaveHistoryResult>, FormData>(
-    async (prev) => {
-      if (!dirty) {
-        notify.info("No hay cambios para guardar");
-        return prev;
-      }
-      const snapshot = values;
-      const local = validateHistory(snapshot);
-      if (!local.ok) {
-        setErrors(local.fieldErrors);
-        setFocusErrorToken((t) => t + 1);
-        notify.error("Revisá los campos marcados antes de guardar.");
-        return { ok: false, fieldErrors: local.fieldErrors };
-      }
+  // Se guarda con onSubmit + transición (no con <form action>): React 19 resetea el <form> después
+  // de cada action y los <select> controlados (lado, etc.) volverían visualmente a su primera opción.
+  const save = () => {
+    if (isPending) return;
+    if (!dirty) {
+      notify.info("No hay cambios para guardar");
+      return;
+    }
+    const snapshot = values;
+    const local = validateHistory(snapshot);
+    if (!local.ok) {
+      setErrors(local.fieldErrors);
+      setFocusErrorToken((t) => t + 1);
+      notify.error("Revisá los campos marcados antes de guardar.");
+      return;
+    }
 
-      let res: ActionState<SaveHistoryResult>;
+    startTransition(async () => {
+      let res: SaveHistoryOutcome;
       try {
-        res = await saveAction(patientId, snapshot);
+        res = await saveAction(patientId, snapshot, versionRef.current);
       } catch {
-        res = { ok: false, message: "No pudimos guardar. Revisá tu conexión e intentá de nuevo." };
+        // La acción pudo haberse guardado igual (p. ej. se cortó la conexión a la vuelta): si fue
+        // así, el próximo intento avisa del conflicto en lugar de pisar nada.
+        res = {
+          ok: false,
+          message: "No pudimos confirmar el guardado. Revisá tu conexión e intentá de nuevo.",
+        };
       }
 
       if (res.ok && res.data) {
         const saved = res.data.values;
+        versionRef.current = res.data.updatedAt;
+        setConflict(false);
         setBaseline(saved);
         // Si no se tipeó nada mientras se guardaba, adoptar los valores normalizados.
         setValues((current) => (current === snapshot ? saved : current));
@@ -184,17 +218,28 @@ export function ClinicalHistoryForm({
         setSavedAt(Date.now());
         setUpdatedLabel(res.data.updatedLabel);
         notify.success(res.message ?? "Historia clínica guardada");
-      } else {
-        if (res.fieldErrors) {
-          setErrors(res.fieldErrors as Record<string, string>);
-          setFocusErrorToken((t) => t + 1);
-        }
-        notify.error(res.message ?? "No pudimos guardar la historia clínica.");
+        return;
       }
-      return res;
-    },
-    { ok: false },
-  );
+      if (res.conflict) {
+        setConflict(true);
+        notify.error(res.message ?? "La historia clínica cambió en otra pestaña. Recargá para ver la última versión.", {
+          duration: 20_000,
+          action: { label: "Recargar", onClick: reloadPage },
+        });
+        return;
+      }
+      if (res.fieldErrors) {
+        setErrors(res.fieldErrors as Record<string, string>);
+        setFocusErrorToken((t) => t + 1);
+      }
+      notify.error(res.message ?? "No pudimos guardar la historia clínica.");
+    });
+  };
+
+  const onSubmit = (e: FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    save();
+  };
 
   // Llevar al primer campo con error.
   useEffect(() => {
@@ -203,9 +248,13 @@ export function ClinicalHistoryForm({
     const target =
       form?.querySelector<HTMLElement>("[aria-invalid='true']") ?? form?.querySelector<HTMLElement>("[role='alert']");
     if (!target) return;
-    const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    target.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "center" });
-    if (target.matches("input, textarea, select, button")) target.focus({ preventScroll: true });
+    target.scrollIntoView({ behavior: scrollBehavior(), block: "center" });
+    if (target.matches("input, textarea, select, button, [role='radiogroup']")) {
+      const focusable = target.matches("[role='radiogroup']")
+        ? (target.querySelector<HTMLElement>("[tabindex='0']") ?? target)
+        : target;
+      focusable.focus({ preventScroll: true });
+    }
   }, [focusErrorToken]);
 
   // Ctrl/Cmd + S guarda.
@@ -270,6 +319,11 @@ export function ClinicalHistoryForm({
       <Spinner className="size-3.5" />
       Guardando…
     </span>
+  ) : conflict ? (
+    <span className="inline-flex min-w-0 items-center gap-2">
+      <TriangleAlert aria-hidden className="size-4 shrink-0 text-yellow" strokeWidth={2.2} />
+      <span className="truncate">Hay una versión más nueva</span>
+    </span>
   ) : dirty ? (
     <span className="inline-flex items-center gap-2">
       <span aria-hidden className="relative inline-flex size-2">
@@ -290,13 +344,19 @@ export function ClinicalHistoryForm({
   );
 
   return (
-    <form ref={formRef} action={formAction} noValidate className="animate-fade-up" aria-label="Historia clínica">
+    <form
+      ref={formRef}
+      onSubmit={onSubmit}
+      noValidate
+      className="animate-fade-up"
+      aria-labelledby="historia-title"
+    >
       <header className="mb-5 flex flex-wrap items-end justify-between gap-x-6 gap-y-2 sm:mb-6">
         <div className="min-w-0">
-          <h2 className="display text-[30px] font-normal text-ink sm:text-[38px]">
-            Historia <span className="font-medium">clínica</span>
+          <h2 id="historia-title" className="display text-2xl font-medium text-ink">
+            Historia clínica
           </h2>
-          <p className="mt-2 text-[15px] text-muted">Anamnesis, examen físico y plan terapéutico, en un solo lugar.</p>
+          <p className="mt-1 text-[15px] text-muted">Anamnesis, examen físico y plan terapéutico, en un solo lugar.</p>
         </div>
         <p className="text-[13px] text-muted">
           {updatedLabel ? (
@@ -351,6 +411,7 @@ export function ClinicalHistoryForm({
           {/* Barra de guardado fija */}
           <div className="pointer-events-none sticky bottom-3 z-20 flex justify-center pt-2 sm:bottom-5 print:hidden">
             <div
+              data-surface="dark"
               className={cn(
                 "pointer-events-auto flex w-full items-center gap-3 rounded-full bg-ink p-1.5 pl-5 text-[14px] text-white shadow-float transition-[box-shadow] duration-300 sm:w-auto sm:min-w-[480px]",
                 dirty && "shadow-[0_2px_6px_rgb(17_17_20/0.1),0_28px_56px_-18px_rgb(17_17_20/0.5)]",
@@ -359,10 +420,26 @@ export function ClinicalHistoryForm({
               <div className="min-w-0 flex-1" role="status" aria-live="polite">
                 {status}
               </div>
-              <kbd className="hidden h-7 items-center rounded-md bg-white/10 px-2 font-sans text-[12px] text-white/70 md:inline-flex">
-                {isMac ? "⌘S" : "Ctrl+S"}
-              </kbd>
-              <SubmitButton variant="inverse" pending={isPending} iconRight={<ArrowRight />} className="px-4 sm:px-5">
+              {conflict && !isPending ? (
+                <button
+                  type="button"
+                  onClick={reloadPage}
+                  className="inline-flex h-10 shrink-0 items-center rounded-full px-3 text-[13px] font-medium text-white underline underline-offset-4 transition-colors hover:bg-white/10 focus-visible:outline-white"
+                >
+                  Recargar
+                </button>
+              ) : (
+                <kbd className="hidden h-7 items-center rounded-md bg-white/10 px-2 font-sans text-[12px] text-white/75 md:inline-flex">
+                  {isMac ? "⌘S" : "Ctrl+S"}
+                </kbd>
+              )}
+              <SubmitButton
+                ref={submitRef}
+                variant="inverse"
+                pending={isPending}
+                iconRight={<ArrowRight />}
+                className="px-4 focus-visible:outline-white sm:px-5"
+              >
                 <span>
                   Guardar<span className="hidden sm:inline"> historia clínica</span>
                 </span>

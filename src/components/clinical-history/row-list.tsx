@@ -1,7 +1,7 @@
 "use client";
 
 import { Plus, Trash2 } from "lucide-react";
-import { useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { notify } from "@/components/clinical-history/notify";
 import { Button } from "@/components/ui/button";
 import { MAX_ROWS } from "@/components/clinical-history/schema";
@@ -47,6 +47,23 @@ export function RowList<T extends { id: string }>({
 }) {
   const [lastAddedId, setLastAddedId] = useState<string | null>(null);
   const atLimit = rows.length >= MAX_ROWS;
+  const rootRef = useRef<HTMLDivElement>(null);
+  /** Índice de la fila que recibe el foco después de quitar una (el botón quitado desaparece). */
+  const focusAfterRemove = useRef<number | null>(null);
+
+  // Al quitar una fila, el foco pasa al primer campo de la siguiente o, si no hay, a "Agregar…".
+  useEffect(() => {
+    const index = focusAfterRemove.current;
+    if (index == null) return;
+    focusAfterRemove.current = null;
+    const root = rootRef.current;
+    if (!root) return;
+    const item = root.querySelectorAll<HTMLElement>("[data-row-item]")[index];
+    const target =
+      item?.querySelector<HTMLElement>("input, select, textarea, button") ??
+      root.querySelector<HTMLElement>("[data-row-add]");
+    target?.focus();
+  }, [rows]);
 
   const add = () => {
     if (atLimit) return;
@@ -58,6 +75,7 @@ export function RowList<T extends { id: string }>({
   const removeAt = (index: number) => {
     const removed = rows[index];
     if (!removed) return;
+    focusAfterRemove.current = index;
     onRowsChange((list) => list.filter((r) => r.id !== removed.id));
     notify.info(noun.removed, {
       action: {
@@ -74,7 +92,7 @@ export function RowList<T extends { id: string }>({
   };
 
   return (
-    <div className="@container">
+    <div ref={rootRef} className="@container">
       {rows.length === 0 ? (
         <div className="flex flex-col items-center rounded-panel border border-dashed border-line-strong px-6 py-8 text-center">
           <span className="mb-3 inline-flex size-11 items-center justify-center rounded-full bg-surface-2 text-ink-2 [&_svg]:size-5">
@@ -82,7 +100,7 @@ export function RowList<T extends { id: string }>({
           </span>
           <p className="text-[15px] font-medium text-ink">{empty.title}</p>
           <p className="mt-1 max-w-sm text-sm text-muted">{empty.description}</p>
-          <Button variant="primary" size="sm" className="mt-5" icon={<Plus />} onClick={add}>
+          <Button variant="primary" size="sm" className="mt-5" icon={<Plus />} onClick={add} data-row-add>
             {addLabel}
           </Button>
         </div>
@@ -92,6 +110,7 @@ export function RowList<T extends { id: string }>({
             {rows.map((row, index) => (
               <li
                 key={row.id}
+                data-row-item
                 className={cn("rounded-panel bg-surface-2 p-3 sm:p-3.5", row.id === lastAddedId && "animate-fade-up")}
               >
                 {renderRow({
@@ -106,7 +125,7 @@ export function RowList<T extends { id: string }>({
                       title={`Quitar ${noun.one}`}
                       className="mt-[7px] inline-flex size-10 shrink-0 items-center justify-center rounded-full text-muted transition-colors hover:bg-danger-50 hover:text-danger"
                     >
-                      <Trash2 className="size-[18px]" strokeWidth={1.8} />
+                      <Trash2 aria-hidden className="size-[18px]" strokeWidth={1.8} />
                     </button>
                   ),
                 })}
@@ -114,7 +133,7 @@ export function RowList<T extends { id: string }>({
             ))}
           </ul>
           <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
-            <Button variant="soft" size="sm" icon={<Plus />} onClick={add} disabled={atLimit}>
+            <Button variant="soft" size="sm" icon={<Plus />} onClick={add} disabled={atLimit} data-row-add>
               {addLabel}
             </Button>
             <p className="tabular text-[13px] text-muted">

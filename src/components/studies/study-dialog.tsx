@@ -1,6 +1,7 @@
 "use client";
 
-import { useActionState, useId, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
+import { useEffect, useId, useRef, useState, useTransition, type FormEvent } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { ChipGroup } from "@/components/ui/chip";
@@ -28,6 +29,9 @@ import type { StudyServices } from "@/components/studies/services";
 import { UploadError } from "@/components/studies/upload";
 import type { ActionState, StudyKind } from "@/lib/types";
 
+/** Resultado de guardar el estudio. `unknown` = la llamada falló y no sabemos si se guardó. */
+type SaveOutcome = Pick<ActionState, "ok" | "message" | "fieldErrors"> & { unknown?: boolean };
+
 const TITLE_PLACEHOLDER: Record<StudyKind | "", string> = {
   "": "Ej.: RMN de rodilla derecha",
   xray: "Ej.: Rx de columna lumbar frente y perfil",
@@ -47,10 +51,10 @@ type Props = {
   /** Archivo soltado sobre la página antes de abrir el diálogo. */
   initialFile: File | null;
   patientId: string;
-  userId: string;
   today: string;
   services: StudyServices;
-  onClose: () => void;
+  /** `saved` = se guardó (o pudo haberse guardado) un estudio. */
+  onClose: (result?: { saved: boolean }) => void;
 };
 
 function pickFile(file: File): { picked: PickedFile | null; error: string | null } {
@@ -64,9 +68,11 @@ function pickFile(file: File): { picked: PickedFile | null; error: string | null
 }
 
 /** Diálogo para agregar o editar un estudio (con subida de archivo y progreso). */
-export function StudyDialog({ study, initialFile, patientId, userId, today, services, onClose }: Props) {
+export function StudyDialog({ study, initialFile, patientId, today, services, onClose }: Props) {
   const formId = useId();
   const editing = study != null;
+  const router = useRouter();
+  const [isPending, startTransition] = useTransition();
 
   // Estado inicial (con archivo soltado: se sugieren título y tipo).
   const [initial] = useState(() => {
@@ -87,6 +93,28 @@ export function StudyDialog({ study, initialFile, patientId, userId, today, serv
   const [errors, setErrors] = useState<Record<string, string>>(initial.error ? { file: initial.error } : {});
   const [progress, setProgress] = useState<number | null>(null);
   const abortRef = useRef<AbortController | null>(null);
+  const formRef = useRef<HTMLFormElement>(null);
+  const submitRef = useRef<HTMLButtonElement>(null);
+
+  // Mientras guarda, el botón se deshabilita y el navegador le quita el foco: si al terminar el
+  // foco quedó perdido (y el diálogo sigue abierto), vuelve al botón.
+  const wasPending = useRef(false);
+  useEffect(() => {
+    const finished = wasPending.current && !isPending;
+    wasPending.current = isPending;
+    const active = document.activeElement;
+    if (finished && (!active || active === document.body)) submitRef.current?.focus({ preventScroll: true });
+  }, [isPending]);
+
+  /** Lleva el foco al primer campo con error (después de que se pinten los errores). */
+  const focusFirstError = () =>
+    requestAnimationFrame(() => {
+      const form = formRef.current;
+      const target =
+        form?.querySelector<HTMLElement>("[data-invalid] button, [aria-invalid='true']") ??
+        form?.querySelector<HTMLElement>("[role='alert']");
+      target?.focus();
+    });
 
   const clearError = (key: string) =>
     setErrors((e) => {
@@ -124,75 +152,103 @@ export function StudyDialog({ study, initialFile, patientId, userId, today, serv
     }
   };
 
-  const [, formAction, isPending] = useActionState<ActionState, FormData>(
-    async () => {
-      const meta: StudyMetaInput = { kind, title, study_date: date, findings };
-      const parsed = studyMetaSchema(today).safeParse(meta);
-      if (!parsed.success) {
-        const fe = zodFieldErrors(parsed.error.issues);
-        setErrors((e) => ({ ...fe, ...(e.file ? { file: e.file } : {}) }));
-        toast.error("Revisá los campos marcados.");
-        return { ok: false, fieldErrors: fe };
-      }
-      if (!picked) clearError("file");
+  // Se envía con onSubmit + transición (no con <form action>): el diálogo sigue montado si algo
+  // falla y React 19 resetearía el <form> después de cada action.
+  const submit = async () => {
+    const meta: StudyMetaInput = { kind, title, study_date: date, findings };
+    const parsed = studyMetaSchema(today).safeParse(meta);
+    if (!parsed.success) {
+      const fe = zodFieldErrors(parsed.error.issues);
+      setErrors((e) => ({ ...fe, ...(e.file ? { file: e.file } : {}) }));
+      toast.error("Revisá los campos marcados.");
+      focusFirstError();
+      return;
+    }
+    if (!picked) clearError("file");
 
-      // 1) Subir el archivo (si hay uno nuevo) directo a Storage.
-      let uploaded: StudyFileInput | null = null;
-      if (picked) {
-        const controller = new AbortController();
-        abortRef.current = controller;
-        try {
-          uploaded = await services.upload({
-            file: picked.file,
-            userId,
-            patientId,
-            onProgress: setProgress,
-            signal: controller.signal,
-          });
-        } catch (err) {
-          setProgress(null);
-          if (err instanceof UploadError && err.aborted) return { ok: false };
-          const message = err instanceof UploadError ? err.message : "No pudimos subir el archivo. Intentá de nuevo.";
-          setErrors((e) => ({ ...e, file: message }));
-          toast.error(message);
-          return { ok: false, message };
-        } finally {
-          abortRef.current = null;
-        }
-      }
-
-      // 2) Guardar los datos. Si falla, se borra el archivo recién subido.
-      let res: Pick<ActionState, "ok" | "message" | "fieldErrors">;
+    // 1) Subir el archivo (si hay uno nuevo) directo a Storage.
+    let uploaded: StudyFileInput | null = null;
+    if (picked) {
+      const controller = new AbortController();
+      abortRef.current = controller;
       try {
-        if (editing) {
-          const change: StudyFileChange = uploaded
-            ? { mode: "replace", file: uploaded }
-            : removeExisting
-              ? { mode: "remove" }
-              : { mode: "keep" };
-          res = await services.updateStudy(study.id, meta, change);
-        } else {
-          res = await services.createStudy(patientId, meta, uploaded);
-        }
-      } catch {
-        res = { ok: false, message: "No pudimos guardar el estudio. Revisá tu conexión e intentá de nuevo." };
-      }
-
-      if (!res.ok) {
-        if (uploaded) await services.remove(uploaded.path);
+        uploaded = await services.upload({
+          file: picked.file,
+          patientId,
+          onProgress: setProgress,
+          signal: controller.signal,
+        });
+      } catch (err) {
         setProgress(null);
-        if (res.fieldErrors) setErrors(res.fieldErrors as Record<string, string>);
-        toast.error(res.message ?? "No pudimos guardar el estudio.");
-        return res;
+        if (err instanceof UploadError && err.aborted) return;
+        const message = err instanceof UploadError ? err.message : "No pudimos subir el archivo. Intentá de nuevo.";
+        setErrors((e) => ({ ...e, file: message }));
+        toast.error(message);
+        return;
+      } finally {
+        abortRef.current = null;
       }
+    }
 
+    // 2) Guardar los datos.
+    let res: SaveOutcome;
+    try {
+      if (editing) {
+        const change: StudyFileChange = uploaded
+          ? { mode: "replace", file: uploaded }
+          : removeExisting
+            ? { mode: "remove" }
+            : { mode: "keep" };
+        res = await services.updateStudy(study.id, meta, change);
+      } else {
+        res = await services.createStudy(patientId, meta, uploaded);
+      }
+    } catch {
+      // La llamada falló (p. ej. se cortó la conexión): el servidor pudo haber guardado igual.
+      res = { ok: false, unknown: true };
+    }
+
+    if (res.unknown) {
+      // No se borra el archivo subido: el estudio guardado podría estar apuntando a él.
+      setProgress(null);
       if (picked?.previewUrl) URL.revokeObjectURL(picked.previewUrl);
-      toast.success(res.message ?? (editing ? "Estudio actualizado" : "Estudio agregado"));
-      onClose();
-      return res;
-    },
-    { ok: false },
-  );
+      toast.error("No pudimos confirmar si se guardó el estudio. Revisá la lista antes de volver a cargarlo.", {
+        duration: 10_000,
+      });
+      router.refresh();
+      onClose({ saved: true });
+      return;
+    }
+
+    if (!res.ok) {
+      // El servidor rechazó los datos: el archivo recién subido no quedó asociado a nada.
+      if (uploaded) await services.remove(uploaded.path);
+      setProgress(null);
+      if (res.fieldErrors) {
+        setErrors(res.fieldErrors as Record<string, string>);
+        focusFirstError();
+      }
+      toast.error(res.message ?? "No pudimos guardar el estudio.");
+      return;
+    }
+
+    if (picked?.previewUrl) URL.revokeObjectURL(picked.previewUrl);
+    toast.success(res.message ?? (editing ? "Estudio actualizado" : "Estudio agregado"));
+    onClose({ saved: true });
+  };
+
+  const onSubmit = (e: FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    if (isPending) return;
+    startTransition(async () => {
+      try {
+        await submit();
+      } catch {
+        setProgress(null);
+        toast.error("No pudimos guardar el estudio. Intentá de nuevo.");
+      }
+    });
+  };
 
   const uploading = progress != null && progress < 1;
 
@@ -236,6 +292,7 @@ export function StudyDialog({ study, initialFile, patientId, userId, today, serv
             {uploading ? "Cancelar subida" : "Cancelar"}
           </Button>
           <SubmitButton
+            ref={submitRef}
             form={formId}
             pending={isPending}
             pendingLabel={uploading ? `Subiendo ${Math.round((progress ?? 0) * 100)}%` : "Guardando…"}
@@ -245,24 +302,30 @@ export function StudyDialog({ study, initialFile, patientId, userId, today, serv
         </>
       }
     >
-      <form id={formId} action={formAction} noValidate className="space-y-6">
+      <form ref={formRef} id={formId} onSubmit={onSubmit} noValidate className="space-y-6">
         <div>
           <p id={`${formId}-kind`} className="mb-2.5 text-[13px] font-medium text-ink-2">
             Tipo de estudio
           </p>
-          <ChipGroup
-            aria-label="Tipo de estudio"
-            size="sm"
-            allowEmpty={false}
-            options={STUDY_KIND_OPTIONS}
-            value={kind ? [kind] : []}
-            onChange={(next) => {
-              setKind((next[0] as StudyKind | undefined) ?? "");
-              clearError("kind");
-            }}
-          />
+          <div
+            role="group"
+            aria-labelledby={`${formId}-kind`}
+            aria-describedby={errors.kind ? `${formId}-kind-error` : undefined}
+            data-invalid={errors.kind ? true : undefined}
+          >
+            <ChipGroup
+              size="sm"
+              allowEmpty={false}
+              options={STUDY_KIND_OPTIONS}
+              value={kind ? [kind] : []}
+              onChange={(next) => {
+                setKind((next[0] as StudyKind | undefined) ?? "");
+                clearError("kind");
+              }}
+            />
+          </div>
           {errors.kind ? (
-            <p role="alert" className="mt-2 text-[13px] text-danger">
+            <p id={`${formId}-kind-error`} role="alert" className="mt-2 text-[13px] text-danger">
               {errors.kind}
             </p>
           ) : null}
@@ -322,7 +385,7 @@ export function StudyDialog({ study, initialFile, patientId, userId, today, serv
         <div>
           <p className="mb-2.5 flex items-baseline justify-between text-[13px] font-medium text-ink-2">
             <span>Archivo</span>
-            <span className="text-xs font-normal text-subtle">Opcional</span>
+            <span className="text-xs font-normal text-muted">Opcional</span>
           </p>
           <FileDropZone
             picked={picked}

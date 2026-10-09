@@ -1,7 +1,7 @@
 "use client";
 
 import { CloudUpload, Plus } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { Button } from "@/components/ui/button";
 import { Chip } from "@/components/ui/chip";
 import { StudyCard } from "@/components/studies/study-card";
@@ -16,8 +16,6 @@ import { cn } from "@/lib/utils";
 
 type Props = {
   patientId: string;
-  /** uid del profesional (primer segmento obligatorio de la ruta en Storage). */
-  userId: string;
   /** Hoy en Argentina ("YYYY-MM-DD"), calculado en el servidor. */
   today: string;
   studies: StudyListItem[];
@@ -52,14 +50,41 @@ function EmptyIllustration() {
   );
 }
 
+/**
+ * Si el foco quedó perdido (en <body> o en un elemento que ya no existe), lo lleva a `preferred`
+ * o, si tampoco está en la página, al título de la pestaña.
+ */
+function restoreFocusTo(preferred: HTMLElement | null, fallback: RefObject<HTMLElement | null>) {
+  requestAnimationFrame(() => {
+    const active = document.activeElement;
+    if (active && active !== document.body && active.isConnected) return;
+    if (preferred?.isConnected) preferred.focus();
+    else fallback.current?.focus();
+  });
+}
+
 /** Pestaña de estudios complementarios del paciente. */
-export function StudiesView({ patientId, userId, today, studies, services }: Props) {
+export function StudiesView({ patientId, today, studies, services }: Props) {
   const svc = useMemo<StudyServices>(() => ({ ...defaultStudyServices, ...services }), [services]);
   const [filter, setFilter] = useState<StudyKind | "all">("all");
   const [dialog, setDialog] = useState<DialogState | null>(null);
   const [dragging, setDragging] = useState(false);
   const dialogKey = useRef(0);
   const dragDepth = useRef(0);
+  const titleRef = useRef<HTMLHeadingElement>(null);
+  /** Botón que abrió el diálogo (el foco vuelve ahí al cerrarlo). */
+  const openerRef = useRef<HTMLElement | null>(null);
+  /** Después de quitar un estudio de la lista, el foco no debe quedar perdido en <body>. */
+  const restoreFocusPending = useRef(false);
+
+  const restoreFocus = (preferred: HTMLElement | null) => restoreFocusTo(preferred, titleRef);
+
+  // Cuando la lista cambia (p. ej. se eliminó un estudio y su tarjeta desapareció).
+  useEffect(() => {
+    if (!restoreFocusPending.current) return;
+    restoreFocusPending.current = false;
+    restoreFocusTo(null, titleRef);
+  }, [studies]);
 
   const counts = useMemo(() => {
     const c = new Map<StudyKind, number>();
@@ -72,8 +97,22 @@ export function StudiesView({ patientId, userId, today, studies, services }: Pro
   const withFile = studies.filter((s) => s.file).length;
 
   const openDialog = (study: StudyListItem | null, file: File | null = null) => {
+    const active = document.activeElement;
+    openerRef.current = active instanceof HTMLElement && active !== document.body ? active : null;
     dialogKey.current += 1;
     setDialog({ key: dialogKey.current, study, file });
+  };
+
+  const closeDialog = () => {
+    setDialog(null);
+    // El <dialog> se desmonta abierto: el navegador no devuelve el foco solo.
+    restoreFocus(openerRef.current);
+    openerRef.current = null;
+  };
+
+  const onStudyDeleted = () => {
+    restoreFocusPending.current = true;
+    restoreFocus(null);
   };
 
   // Soltar un archivo en cualquier parte de la página abre "Agregar estudio" con ese archivo.
@@ -104,6 +143,7 @@ export function StudiesView({ patientId, userId, today, studies, services }: Pro
       if (dialogOpen) return;
       const file = e.dataTransfer?.files?.[0];
       if (file) {
+        openerRef.current = null;
         dialogKey.current += 1;
         setDialog({ key: dialogKey.current, study: null, file });
       }
@@ -124,10 +164,15 @@ export function StudiesView({ patientId, userId, today, studies, services }: Pro
     <section aria-labelledby="studies-title" className="animate-fade-up">
       <header className="mb-6 flex flex-wrap items-end justify-between gap-4">
         <div className="min-w-0">
-          <h2 id="studies-title" className="display text-[30px] font-normal text-ink sm:text-[38px]">
-            Estudios <span className="font-medium">complementarios</span>
+          <h2
+            id="studies-title"
+            ref={titleRef}
+            tabIndex={-1}
+            className="display text-2xl font-medium text-ink outline-none"
+          >
+            Estudios
           </h2>
-          <p className="mt-2 text-[15px] text-muted">
+          <p className="mt-1 text-[15px] text-muted">
             {studies.length === 0
               ? "Imágenes, informes médicos y laboratorio del paciente."
               : `${studies.length} ${studies.length === 1 ? "estudio" : "estudios"} · ${withFile} con archivo adjunto`}
@@ -149,7 +194,7 @@ export function StudiesView({ patientId, userId, today, studies, services }: Pro
             <Button variant="primary" size="lg" className="mt-7" icon={<Plus />} onClick={() => openDialog(null)}>
               Agregar estudio
             </Button>
-            <p className="mt-4 hidden items-center gap-1.5 text-[13px] text-subtle sm:inline-flex">
+            <p className="mt-4 hidden items-center gap-1.5 text-[13px] text-muted sm:inline-flex">
               <CloudUpload className="size-4" strokeWidth={1.8} />o arrastrá un archivo a esta página · {FORMATS_HINT}
             </p>
           </div>
@@ -163,7 +208,7 @@ export function StudiesView({ patientId, userId, today, studies, services }: Pro
               className="scrollbar-none -mx-4 mb-5 flex gap-2 overflow-x-auto px-4 sm:mx-0 sm:flex-wrap sm:px-0"
             >
               <Chip size="sm" selected={activeFilter === "all"} onClick={() => setFilter("all")} className="shrink-0">
-                Todos <span className="tabular opacity-60">{studies.length}</span>
+                Todos <span className="tabular opacity-70">{studies.length}</span>
               </Chip>
               {kindsPresent.map((k) => (
                 <Chip
@@ -175,7 +220,7 @@ export function StudiesView({ patientId, userId, today, studies, services }: Pro
                   className="shrink-0"
                   title={STUDY_KINDS[k].label}
                 >
-                  {STUDY_KINDS[k].short} <span className="tabular opacity-60">{counts.get(k)}</span>
+                  {STUDY_KINDS[k].short} <span className="tabular opacity-70">{counts.get(k)}</span>
                 </Chip>
               ))}
             </div>
@@ -183,7 +228,14 @@ export function StudiesView({ patientId, userId, today, studies, services }: Pro
 
           <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
             {visible.map((study, i) => (
-              <StudyCard key={study.id} study={study} index={i} services={svc} onEdit={() => openDialog(study)} />
+              <StudyCard
+                key={study.id}
+                study={study}
+                index={i}
+                services={svc}
+                onEdit={() => openDialog(study)}
+                onDeleted={onStudyDeleted}
+              />
             ))}
           </div>
         </>
@@ -195,10 +247,9 @@ export function StudiesView({ patientId, userId, today, studies, services }: Pro
           study={dialog.study}
           initialFile={dialog.file}
           patientId={patientId}
-          userId={userId}
           today={today}
           services={svc}
-          onClose={() => setDialog(null)}
+          onClose={closeDialog}
         />
       ) : null}
 

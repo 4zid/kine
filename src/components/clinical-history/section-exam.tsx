@@ -28,7 +28,7 @@ function BmiCard({ height, weight }: { height: string; weight: string }) {
     >
       <DecorCircles variant="c" className="text-white/60" />
       <div className="relative flex items-start justify-between gap-3">
-        <p className="text-[13px] font-medium text-white/75">IMC · índice de masa corporal</p>
+        <p className="text-[13px] font-medium text-white/85">IMC · índice de masa corporal</p>
         {bmi ? (
           <span className="inline-flex h-7 shrink-0 items-center rounded-full bg-white px-3 text-[13px] font-semibold text-accent-900">
             {bmi.category.label}
@@ -38,7 +38,7 @@ function BmiCard({ height, weight }: { height: string; weight: string }) {
       <div className="relative mt-3 flex flex-wrap items-end justify-between gap-x-6 gap-y-3">
         <p className="display tabular">
           <span className="text-[44px] font-medium sm:text-[52px]">{bmi ? formatDecimal(bmi.value) : "—"}</span>
-          <span className="ml-1 text-base text-white/70">kg/m²</span>
+          <span className="ml-1 text-base text-white/85">kg/m²</span>
         </p>
         {bmi && markerPct != null ? (
           <div className="w-full max-w-[260px] pb-2" aria-hidden>
@@ -55,7 +55,7 @@ function BmiCard({ height, weight }: { height: string; weight: string }) {
                 style={{ left: `${markerPct}%` }}
               />
             </div>
-            <div className="mt-2 flex justify-between text-[11px] text-white/60">
+            <div className="mt-2 flex justify-between text-[11px] text-white/80">
               <span>15</span>
               <span>18,5</span>
               <span>25</span>
@@ -64,7 +64,7 @@ function BmiCard({ height, weight }: { height: string; weight: string }) {
             </div>
           </div>
         ) : (
-          <p className="pb-2 text-sm text-white/75">Completá talla y peso para calcularlo.</p>
+          <p className="pb-2 text-sm text-white/85">Completá talla y peso para calcularlo.</p>
         )}
       </div>
     </div>

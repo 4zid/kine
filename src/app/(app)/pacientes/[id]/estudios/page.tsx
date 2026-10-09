@@ -15,11 +15,12 @@ export async function generateMetadata({ params }: PageProps<"/pacientes/[id]/es
   return { title: patient ? `Estudios · ${fullName(patient)}` : "Estudios" };
 }
 
-const THUMBNAIL_TTL_SECONDS = 60 * 60;
+/** Miniaturas: URLs firmadas cortas (datos de salud). Si vencen, la tarjeta muestra el ícono del archivo. */
+const THUMBNAIL_TTL_SECONDS = 10 * 60;
 
 export default async function StudiesPage({ params }: PageProps<"/pacientes/[id]/estudios">) {
   const { id } = await params;
-  const [userId, patient, supabase] = await Promise.all([requireUserId(), getPatientOrNotFound(id), createClient()]);
+  const [, patient, supabase] = await Promise.all([requireUserId(), getPatientOrNotFound(id), createClient()]);
 
   const { data: rows, error } = await supabase
     .from("patient_studies")
@@ -54,5 +55,5 @@ export default async function StudiesPage({ params }: PageProps<"/pacientes/[id]
     thumbnailUrl: r.file_path ? (thumbnails.get(r.file_path) ?? null) : null,
   }));
 
-  return <StudiesView patientId={patient.id} userId={userId} today={todayISO()} studies={studies} />;
+  return <StudiesView patientId={patient.id} today={todayISO()} studies={studies} />;
 }

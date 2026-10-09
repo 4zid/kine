@@ -7,10 +7,11 @@ function Bar({ className, style }: { className: string; style?: CSSProperties })
 /** Esqueleto de la pestaña de estudios. */
 export default function StudiesLoading() {
   return (
-    <div aria-busy="true" aria-label="Cargando estudios" className="animate-fade-in">
+    <div role="status" aria-busy="true" className="animate-fade-in">
+      <span className="sr-only">Cargando estudios…</span>
       <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
-        <div className="space-y-3">
-          <Bar className="h-9 w-72 max-w-full" />
+        <div className="space-y-2.5">
+          <Bar className="h-7 w-32 max-w-full" />
           <Bar className="h-4 w-56" />
         </div>
         <Bar className="h-11 w-44" />

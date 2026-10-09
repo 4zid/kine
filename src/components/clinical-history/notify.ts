@@ -8,6 +8,6 @@ const TOP: ExternalToast = { position: "top-center" };
 
 export const notify = {
   success: (message: string) => toast.success(message, TOP),
-  error: (message: string) => toast.error(message, TOP),
+  error: (message: string, options?: ExternalToast) => toast.error(message, { ...TOP, ...options }),
   info: (message: string, options?: ExternalToast) => toast(message, { ...TOP, ...options }),
 };

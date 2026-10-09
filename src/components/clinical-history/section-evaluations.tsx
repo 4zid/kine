@@ -1,7 +1,7 @@
 "use client";
 
 import { Activity, ClipboardList, Dumbbell, Ruler } from "lucide-react";
-import { useRef, type KeyboardEvent } from "react";
+import { useId, useRef, type KeyboardEvent } from "react";
 import { FieldError, MiniField, SideSelect } from "@/components/clinical-history/fields";
 import { RowList } from "@/components/clinical-history/row-list";
 import {
@@ -78,7 +78,7 @@ export function RangeOfMotionSection({ rows, errors, onRowsChange, patch }: RowS
                 <MiniField
                   label="Articulación"
                   list="hc-joints"
-                  placeholder="Hombro"
+                  placeholder="Ej.: Hombro"
                   maxLength={80}
                   autoFocus={isNew && row.joint === ""}
                   value={row.joint}
@@ -90,7 +90,7 @@ export function RangeOfMotionSection({ rows, errors, onRowsChange, patch }: RowS
                 <MiniField
                   label="Movimiento"
                   list="hc-movements"
-                  placeholder="Flexión"
+                  placeholder="Ej.: Flexión"
                   maxLength={80}
                   autoFocus={isNew && row.joint !== ""}
                   value={row.movement}
@@ -187,15 +187,19 @@ function GradePicker({
 }) {
   const refs = useRef<(HTMLButtonElement | null)[]>([]);
   const focusIndex = value ?? 0;
+  const statusId = useId();
 
   const onKeyDown = (e: KeyboardEvent<HTMLButtonElement>, index: number) => {
-    const delta =
-      e.key === "ArrowRight" || e.key === "ArrowUp" ? 1 : e.key === "ArrowLeft" || e.key === "ArrowDown" ? -1 : 0;
-    if (!delta) return;
+    let next: number | null = null;
+    if (e.key === "ArrowRight" || e.key === "ArrowUp") next = index + 1;
+    else if (e.key === "ArrowLeft" || e.key === "ArrowDown") next = index - 1;
+    else if (e.key === "Home") next = 0;
+    else if (e.key === "End") next = 5;
+    if (next == null) return;
     e.preventDefault();
-    const next = Math.max(0, Math.min(5, index + delta)) as Grade;
-    onChange(next);
-    refs.current[next]?.focus();
+    const grade = Math.max(0, Math.min(5, next)) as Grade;
+    onChange(grade);
+    refs.current[grade]?.focus();
   };
 
   return (
@@ -203,6 +207,8 @@ function GradePicker({
       <div
         role="radiogroup"
         aria-label={label}
+        aria-describedby={error ? statusId : undefined}
+        aria-invalid={error ? true : undefined}
         className={cn(
           "flex h-[54px] items-center gap-1 rounded-[14px] bg-surface px-1.5 shadow-inset",
           error && "shadow-[0_0_0_1.5px_var(--color-danger)]",
@@ -240,7 +246,7 @@ function GradePicker({
         })}
       </div>
       {error ? (
-        <FieldError>{error}</FieldError>
+        <FieldError id={statusId}>{error}</FieldError>
       ) : (
         <p className="mt-1 px-1 text-[12px] text-muted" aria-live="polite">
           {value != null ? GRADE_LABEL.get(value) : "Elegí un grado"}
@@ -273,7 +279,7 @@ export function StrengthSection({ rows, errors, onRowsChange, patch }: RowSectio
               <MiniField
                 label="Músculo o grupo muscular"
                 list="hc-muscles"
-                placeholder="Cuádriceps"
+                placeholder="Ej.: Cuádriceps"
                 maxLength={80}
                 autoFocus={isNew}
                 value={row.muscle}
@@ -327,25 +333,51 @@ function ResultPicker({
   label: string;
   className?: string;
 }) {
+  const refs = useRef<(HTMLButtonElement | null)[]>([]);
+  const errorId = useId();
+  const current = value ? TEST_RESULTS.indexOf(value) : -1;
+  const tabStop = current >= 0 ? current : 0;
+  const last = TEST_RESULTS.length - 1;
+
+  // Patrón radiogroup: un solo tab stop; flechas / Inicio / Fin eligen y mueven el foco.
+  const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
+    let next: number | null = null;
+    if (e.key === "ArrowRight" || e.key === "ArrowDown") next = tabStop >= last ? 0 : tabStop + 1;
+    else if (e.key === "ArrowLeft" || e.key === "ArrowUp") next = tabStop <= 0 ? last : tabStop - 1;
+    else if (e.key === "Home") next = 0;
+    else if (e.key === "End") next = last;
+    if (next == null) return;
+    e.preventDefault();
+    onChange(TEST_RESULTS[next]);
+    refs.current[next]?.focus();
+  };
+
   return (
     <div className={cn("min-w-0", className)}>
       <div
         role="radiogroup"
         aria-label={label}
+        aria-describedby={error ? errorId : undefined}
+        aria-invalid={error ? true : undefined}
+        onKeyDown={onKeyDown}
         className={cn(
           "flex min-h-[54px] items-center gap-1 rounded-[14px] bg-surface p-1.5 shadow-inset",
           error && "shadow-[0_0_0_1.5px_var(--color-danger)]",
         )}
       >
-        {TEST_RESULTS.map((r) => {
+        {TEST_RESULTS.map((r, i) => {
           const meta = RESULT_META[r];
           const active = value === r;
           return (
             <button
               key={r}
+              ref={(el) => {
+                refs.current[i] = el;
+              }}
               type="button"
               role="radio"
               aria-checked={active}
+              tabIndex={i === tabStop ? 0 : -1}
               onClick={() => onChange(r)}
               className={cn(
                 "inline-flex min-h-10 min-w-0 flex-auto items-center justify-center gap-1.5 rounded-[11px] px-2 text-center text-[13px] leading-tight font-medium transition-[background-color,color] duration-150 @min-[820px]:flex-none @min-[820px]:px-3",
@@ -358,7 +390,7 @@ function ResultPicker({
           );
         })}
       </div>
-      <FieldError>{error}</FieldError>
+      <FieldError id={errorId}>{error}</FieldError>
     </div>
   );
 }
@@ -392,7 +424,7 @@ export function SpecialTestsSection({ rows, errors, onRowsChange, patch }: RowSe
             <MiniField
               label="Prueba"
               list="hc-tests"
-              placeholder="Lasègue"
+              placeholder="Ej.: Lasègue"
               maxLength={100}
               autoFocus={isNew}
               value={row.name}
@@ -486,7 +518,7 @@ export function FunctionalScalesSection({
               <MiniField
                 label="Escala o cuestionario"
                 list="hc-scales"
-                placeholder="Oswestry (ODI)"
+                placeholder="Ej.: Oswestry (ODI)"
                 maxLength={100}
                 autoFocus={isNew}
                 value={row.name}
