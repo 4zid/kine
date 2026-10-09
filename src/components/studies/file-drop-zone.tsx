@@ -1,7 +1,7 @@
 "use client";
 
 import { CloudUpload, RefreshCw, Undo2, X } from "lucide-react";
-import { useId, useRef, useState, type DragEvent, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, type DragEvent, type ReactNode } from "react";
 import { cn } from "@/lib/utils";
 import { FileTypeIcon } from "@/components/studies/file-visual";
 import { FILE_ACCEPT, FILE_CATEGORY_LABEL, FORMATS_HINT, fileCategory, fileSize } from "@/components/studies/files";
@@ -55,9 +55,22 @@ export function FileDropZone({
   disabled,
 }: Props) {
   const inputId = useId();
+  const titleId = `${inputId}-title`;
+  const hintId = `${inputId}-hint`;
+  const errorId = `${inputId}-error`;
   const inputRef = useRef<HTMLInputElement>(null);
+  const rootRef = useRef<HTMLDivElement>(null);
+  /** Control que recibe el foco cuando el botón usado desaparece (quitar / deshacer). */
+  const focusNext = useRef<"zone" | "undo" | "replace" | null>(null);
   const [dragging, setDragging] = useState(false);
   const uploading = progress != null;
+
+  useEffect(() => {
+    const target = focusNext.current;
+    if (!target) return;
+    focusNext.current = null;
+    rootRef.current?.querySelector<HTMLElement>(`[data-dz="${target}"]`)?.focus();
+  });
 
   const browse = () => inputRef.current?.click();
 
@@ -97,6 +110,7 @@ export function FileDropZone({
       accept={FILE_ACCEPT}
       className="sr-only"
       tabIndex={-1}
+      aria-hidden
       disabled={disabled}
       onChange={(e) => {
         const file = e.target.files?.[0];
@@ -181,7 +195,10 @@ export function FileDropZone({
           </button>
           <button
             type="button"
-            onClick={onClearPicked}
+            onClick={() => {
+              focusNext.current = existing && !removeExisting ? "replace" : "zone";
+              onClearPicked();
+            }}
             disabled={disabled}
             className={iconButton}
             aria-label="Quitar archivo elegido"
@@ -204,6 +221,8 @@ export function FileDropZone({
             type="button"
             onClick={browse}
             disabled={disabled}
+            data-dz="replace"
+            aria-label={`Reemplazar ${existing.name}`}
             className={cn(iconButton, "w-auto gap-1.5 px-3 text-[13px] font-medium text-ink-2")}
           >
             <RefreshCw className="size-4" strokeWidth={1.8} />
@@ -211,7 +230,10 @@ export function FileDropZone({
           </button>
           <button
             type="button"
-            onClick={onRemoveExisting}
+            onClick={() => {
+              focusNext.current = "undo";
+              onRemoveExisting();
+            }}
             disabled={disabled}
             className={iconButton}
             aria-label="Quitar archivo adjunto"
@@ -223,48 +245,52 @@ export function FileDropZone({
       ),
     });
   } else {
+    // Botón real (no un <label> enfocable): se anuncia como botón y se activa con Enter/Espacio.
+    // Las ayudas quedan como descripción, no como parte del nombre.
     body = (
-      <label
-        htmlFor={inputId}
-        {...dragProps}
-        tabIndex={disabled ? -1 : 0}
-        onKeyDown={(e) => {
-          if (e.key === "Enter" || e.key === " ") {
-            e.preventDefault();
-            browse();
-          }
-        }}
-        className={cn(
-          "group flex cursor-pointer flex-col items-center justify-center rounded-panel border-[1.5px] border-dashed px-6 py-8 text-center transition-[background-color,border-color] duration-150 outline-none focus-visible:border-ink",
-          dragging ? "border-ink bg-surface-2" : "border-line-strong hover:border-ink/40 hover:bg-surface-2/60",
-          error && "border-danger",
-        )}
-      >
-        <span
+      <div {...dragProps} data-invalid={error ? true : undefined}>
+        <button
+          type="button"
+          onClick={browse}
+          disabled={disabled}
+          data-dz="zone"
+          aria-labelledby={titleId}
+          aria-describedby={error ? errorId : hintId}
           className={cn(
-            "mb-3 inline-flex size-12 items-center justify-center rounded-full transition-colors",
-            dragging ? "bg-ink text-white" : "bg-surface-2 text-ink-2 group-hover:bg-surface",
+            "group flex w-full cursor-pointer flex-col items-center justify-center rounded-panel border-[1.5px] border-dashed px-6 py-8 text-center transition-[background-color,border-color] duration-150 disabled:cursor-default disabled:opacity-60",
+            dragging ? "border-ink bg-surface-2" : "border-line-strong hover:border-ink/40 hover:bg-surface-2/60",
+            error && "border-danger",
           )}
         >
-          <CloudUpload className="size-[22px]" strokeWidth={1.8} />
-        </span>
-        <span className="text-[15px] font-medium text-ink">
-          {dragging ? "Soltá el archivo acá" : "Arrastrá un archivo o tocá para elegirlo"}
-        </span>
-        {error ? (
-          <span role="alert" className="mt-1.5 max-w-sm text-[13px] font-medium text-danger">
-            {error}
+          <span
+            aria-hidden
+            className={cn(
+              "mb-3 inline-flex size-12 items-center justify-center rounded-full transition-colors",
+              dragging ? "bg-ink text-white" : "bg-surface-2 text-ink-2 group-hover:bg-surface",
+            )}
+          >
+            <CloudUpload className="size-[22px]" strokeWidth={1.8} />
           </span>
-        ) : (
-          <span className="mt-1 text-[13px] text-muted">{FORMATS_HINT}</span>
-        )}
-      </label>
+          <span id={titleId} className="text-[15px] font-medium text-ink">
+            {dragging ? "Soltá el archivo acá" : "Arrastrá un archivo o tocá para elegirlo"}
+          </span>
+          {error ? (
+            <span id={errorId} role="alert" className="mt-1.5 max-w-sm text-[13px] font-medium text-danger">
+              {error}
+            </span>
+          ) : (
+            <span id={hintId} className="mt-1 text-[13px] text-muted">
+              {FORMATS_HINT}
+            </span>
+          )}
+        </button>
+      </div>
     );
   }
   const showErrorBelow = Boolean(error) && (picked != null || (existing != null && !removeExisting));
 
   return (
-    <div>
+    <div ref={rootRef}>
       {input}
       {body}
       {existing && removeExisting && !picked ? (
@@ -272,10 +298,14 @@ export function FileDropZone({
           Se quitará <span className="font-medium text-ink-2">{existing.name}</span> al guardar.
           <button
             type="button"
-            onClick={onRestoreExisting}
-            className="inline-flex items-center gap-1 rounded-full px-2 py-1 font-medium text-ink hover:bg-surface-2"
+            data-dz="undo"
+            onClick={() => {
+              focusNext.current = "replace";
+              onRestoreExisting();
+            }}
+            className="inline-flex h-10 items-center gap-1 rounded-full px-3 font-medium text-ink hover:bg-surface-2"
           >
-            <Undo2 className="size-3.5" />
+            <Undo2 aria-hidden className="size-3.5" />
             Deshacer
           </button>
         </p>

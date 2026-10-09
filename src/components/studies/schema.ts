@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { MAX_UPLOAD_BYTES, STUDY_KINDS } from "@/lib/constants";
 import type { ActionState, StudyKind } from "@/lib/types";
-import { ALLOWED_MIME_TYPES } from "@/components/studies/files";
+import { ALLOWED_MIME_TYPES, type AllowedMimeType } from "@/components/studies/files";
 
 /** Validación compartida (cliente + Server Actions) de `patient_studies`. */
 
@@ -59,6 +59,14 @@ export const studyFileSchema = z.object({
 
 export type StudyFileInput = z.input<typeof studyFileSchema>;
 
+/** Permiso de subida emitido por el servidor: ruta en Storage + URL firmada de un solo uso. */
+export type StudyUploadTicket = {
+  path: string;
+  uploadUrl: string;
+  /** Tipo MIME admitido con el que hay que subir el archivo. */
+  mime_type: AllowedMimeType;
+};
+
 export type StudyFileChange = { mode: "keep" } | { mode: "remove" } | { mode: "replace"; file: StudyFileInput };
 
 /** Errores de zod → { campo: mensaje }. */
@@ -83,7 +91,7 @@ export type StudyListItem = {
   /** "hace 3 días" */
   createdLabel: string;
   file: { name: string; mime_type: string | null; size_bytes: number | null } | null;
-  /** URL firmada (1 h) para miniaturas de imágenes. */
+  /** URL firmada de corta duración (10 min) para miniaturas de imágenes. */
   thumbnailUrl: string | null;
 };
 
@@ -103,5 +111,12 @@ export type UpdateStudyAction = (
 ) => Promise<ActionState>;
 
 export type DeleteStudyAction = (studyId: string) => Promise<ActionState>;
+
+export type CreateStudyUploadAction = (
+  patientId: string,
+  file: { name: string; type: string; size: number },
+) => Promise<ActionState<StudyUploadTicket>>;
+
+export type DiscardStudyUploadAction = (path: string) => Promise<ActionState>;
 
 export type StudyFileUrlAction = (studyId: string, mode: "view" | "download") => Promise<ActionState<{ url: string }>>;

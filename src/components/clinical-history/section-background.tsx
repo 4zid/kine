@@ -1,62 +1,162 @@
 "use client";
 
 import { ShieldAlert, TriangleAlert } from "lucide-react";
-import { ChipGroup, type ChipOption } from "@/components/ui/chip";
+import { useId } from "react";
+import { Chip } from "@/components/ui/chip";
 import { CharCount, FieldError, GroupLabel, TextAreaField } from "@/components/clinical-history/fields";
 import type { FieldSectionProps } from "@/components/clinical-history/types";
 import { CONDITIONS } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 
-const ALERT_DOT = "var(--color-red)";
+/**
+ * Nivel de alerta de un antecedente. El catálogo marca `alert` (aparece en los avisos clínicos);
+ * `severity: "precaution"` (o `precaution: true`) lo baja a "requiere precaución".
+ */
+type ConditionTier = "contraindication" | "precaution";
+type ConditionFlags = { alert?: boolean; severity?: unknown; precaution?: unknown };
 
-const CONDITION_OPTIONS: ChipOption[] = CONDITIONS.map((c) => ({
+function tierOf(condition: (typeof CONDITIONS)[number]): ConditionTier | null {
+  const flags = condition as ConditionFlags;
+  if (flags.severity === "precaution" || flags.precaution === true) return "precaution";
+  return flags.alert ? "contraindication" : null;
+}
+
+const TIER_META: Record<ConditionTier, { dot: string; label: string; sr: string }> = {
+  contraindication: { dot: "var(--color-red)", label: "Puede contraindicar técnicas", sr: "puede contraindicar técnicas" },
+  precaution: { dot: "var(--color-yellow)", label: "Requiere precaución", sr: "requiere precaución" },
+};
+
+type ConditionInfo = { value: string; label: string; hint?: string; tier: ConditionTier | null };
+
+const CONDITION_INFO: ConditionInfo[] = CONDITIONS.map((c) => ({
   value: c.value,
   label: c.label,
-  dot: c.alert ? ALERT_DOT : undefined,
+  hint: c.hint,
+  tier: tierOf(c),
 }));
+const HAS_PRECAUTIONS = CONDITION_INFO.some((c) => c.tier === "precaution");
 
-const ALERT_CONDITIONS = new Map(CONDITIONS.filter((c) => c.alert).map((c) => [c.value, c.label]));
+/** Condiciones marcadas que pueden contraindicar técnicas o requieren precaución (orden del catálogo). */
+export function selectedAlerts(conditions: string[]): {
+  contraindications: ConditionInfo[];
+  precautions: ConditionInfo[];
+} {
+  const picked = CONDITION_INFO.filter((c) => c.tier && conditions.includes(c.value));
+  return {
+    contraindications: picked.filter((c) => c.tier === "contraindication"),
+    precautions: picked.filter((c) => c.tier === "precaution"),
+  };
+}
 
-/** Condiciones marcadas que pueden contraindicar técnicas. */
+/** Etiquetas de las condiciones marcadas con alerta (contraindicación o precaución). */
 export function selectedAlertLabels(conditions: string[]): string[] {
-  return conditions.filter((c) => ALERT_CONDITIONS.has(c)).map((c) => ALERT_CONDITIONS.get(c) as string);
+  const { contraindications, precautions } = selectedAlerts(conditions);
+  return [...contraindications, ...precautions].map((c) => c.label);
+}
+
+function TierDot({ tier }: { tier: ConditionTier }) {
+  return (
+    <span aria-hidden className="size-2 shrink-0 rounded-full" style={{ backgroundColor: TIER_META[tier].dot }} />
+  );
 }
 
 export function BackgroundSection({ values, errors, set }: FieldSectionProps) {
-  const alerts = selectedAlertLabels(values.conditions);
+  const { contraindications, precautions } = selectedAlerts(values.conditions);
+  const withHints = [...contraindications, ...precautions].filter((c) => c.hint);
+  const uid = useId();
+  const labelId = `${uid}-label`;
+  const legendId = `${uid}-legend`;
+  const errorId = `${uid}-error`;
+
+  const toggle = (value: string) =>
+    set(
+      "conditions",
+      values.conditions.includes(value) ? values.conditions.filter((v) => v !== value) : [...values.conditions, value],
+    );
 
   return (
     <div className="space-y-8">
       <div>
         <GroupLabel
           hint={
-            <span className="inline-flex items-center gap-1.5">
-              <span aria-hidden className="size-2 rounded-full" style={{ backgroundColor: ALERT_DOT }} />
-              Puede contraindicar técnicas
+            <span id={legendId} className="inline-flex flex-wrap items-center gap-x-3 gap-y-1">
+              <span className="inline-flex items-center gap-1.5">
+                <TierDot tier="contraindication" />
+                {TIER_META.contraindication.label}
+              </span>
+              {HAS_PRECAUTIONS ? (
+                <span className="inline-flex items-center gap-1.5">
+                  <TierDot tier="precaution" />
+                  {TIER_META.precaution.label}
+                </span>
+              ) : null}
+              <span>(lista orientativa)</span>
             </span>
           }
         >
-          Patologías y condiciones
+          <span id={labelId}>Patologías y condiciones</span>
         </GroupLabel>
-        <ChipGroup
-          multiple
-          size="sm"
-          aria-label="Patologías y condiciones"
-          options={CONDITION_OPTIONS}
-          value={values.conditions}
-          onChange={(next) => set("conditions", next)}
-        />
-        <FieldError>{errors.conditions}</FieldError>
-        {alerts.length > 0 ? (
+        <div
+          role="group"
+          aria-labelledby={labelId}
+          aria-describedby={errors.conditions ? `${errorId} ${legendId}` : legendId}
+          className="flex flex-wrap gap-2"
+        >
+          {CONDITION_INFO.map((c) => (
+            <Chip
+              key={c.value}
+              size="sm"
+              dot={c.tier ? TIER_META[c.tier].dot : undefined}
+              selected={values.conditions.includes(c.value)}
+              onClick={() => toggle(c.value)}
+              title={c.hint}
+            >
+              {c.label}
+              {c.tier ? <span className="sr-only"> ({TIER_META[c.tier].sr})</span> : null}
+            </Chip>
+          ))}
+        </div>
+        <FieldError id={errorId}>{errors.conditions}</FieldError>
+        {contraindications.length + precautions.length > 0 ? (
           <div
             role="note"
-            className="mt-4 flex animate-fade-in items-start gap-3 rounded-panel bg-danger-50 px-4 py-3.5 text-[14px] text-ink-2"
+            className={cn(
+              "mt-4 flex animate-fade-in items-start gap-3 rounded-panel px-4 py-3.5 text-[14px] text-ink-2",
+              contraindications.length > 0 ? "bg-danger-50" : "bg-warning-50",
+            )}
           >
-            <TriangleAlert aria-hidden className="mt-0.5 size-[18px] shrink-0 text-danger" strokeWidth={2} />
-            <p>
-              <span className="font-medium text-danger">Contraindicación a considerar: </span>
-              {alerts.join(" · ")}. Revisá la sección de alertas antes de indicar agentes físicos o terapia manual.
-            </p>
+            <TriangleAlert
+              aria-hidden
+              className={cn("mt-0.5 size-[18px] shrink-0", contraindications.length > 0 ? "text-danger" : "text-warning")}
+              strokeWidth={2}
+            />
+            <div className="min-w-0 space-y-1">
+              {contraindications.length > 0 ? (
+                <p>
+                  <span className="font-medium text-danger">Contraindicación a considerar: </span>
+                  {contraindications.map((c) => c.label).join(" · ")}.
+                </p>
+              ) : null}
+              {precautions.length > 0 ? (
+                <p>
+                  <span className="font-medium text-warning">Requiere precaución: </span>
+                  {precautions.map((c) => c.label).join(" · ")}.
+                </p>
+              ) : null}
+              {withHints.length > 0 ? (
+                <ul className="space-y-0.5 text-[13px]">
+                  {withHints.map((c) => (
+                    <li key={c.value}>
+                      <span className="font-medium text-ink">{c.label}:</span> {c.hint}
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+              <p className="text-[13px] text-muted">
+                Revisá la sección de alertas antes de indicar agentes físicos o terapia manual. La lista es orientativa
+                y no reemplaza el criterio profesional.
+              </p>
+            </div>
           </div>
         ) : null}
       </div>
@@ -125,14 +225,16 @@ export function BackgroundSection({ values, errors, set }: FieldSectionProps) {
 }
 
 export function AlertsSection({ values, errors, set }: FieldSectionProps) {
-  const alerts = selectedAlertLabels(values.conditions);
+  const { contraindications, precautions } = selectedAlerts(values.conditions);
+  const fromHistory = [...contraindications, ...precautions];
   const hasFlags = values.red_flags.trim() !== "";
+  const tone = hasFlags || contraindications.length > 0 ? "danger" : precautions.length > 0 ? "warning" : "none";
 
   return (
     <div
       className={cn(
         "rounded-panel p-4 transition-colors sm:p-6",
-        hasFlags || alerts.length > 0 ? "bg-danger-50" : "bg-surface-2",
+        tone === "danger" ? "bg-danger-50" : tone === "warning" ? "bg-warning-50" : "bg-surface-2",
       )}
     >
       <div className="flex items-start gap-3">
@@ -140,7 +242,11 @@ export function AlertsSection({ values, errors, set }: FieldSectionProps) {
           aria-hidden
           className={cn(
             "inline-flex size-10 shrink-0 items-center justify-center rounded-full",
-            hasFlags || alerts.length > 0 ? "bg-danger text-white" : "bg-surface text-ink-2 shadow-inset",
+            tone === "danger"
+              ? "bg-danger text-white"
+              : tone === "warning"
+                ? "bg-warning text-white"
+                : "bg-surface text-ink-2 shadow-inset",
           )}
         >
           <ShieldAlert className="size-5" strokeWidth={1.8} />
@@ -149,7 +255,7 @@ export function AlertsSection({ values, errors, set }: FieldSectionProps) {
           <label htmlFor="hc-red-flags" className="text-[15px] font-medium text-ink">
             Banderas rojas y contraindicaciones
           </label>
-          <p className="mt-0.5 text-sm text-muted">
+          <p id="hc-red-flags-hint" className="mt-0.5 text-sm text-muted">
             Signos de alarma, precauciones y técnicas a evitar. Se destacan en la ficha del paciente.
           </p>
         </div>
@@ -162,7 +268,7 @@ export function AlertsSection({ values, errors, set }: FieldSectionProps) {
         onChange={(e) => set("red_flags", e.target.value)}
         placeholder="Ej.: Marcapasos — no usar electroterapia ni magnetoterapia. Dolor nocturno que no cede con el reposo: derivar si persiste."
         aria-invalid={errors.red_flags ? true : undefined}
-        aria-describedby={errors.red_flags ? "hc-red-flags-error" : undefined}
+        aria-describedby={errors.red_flags ? "hc-red-flags-error hc-red-flags-hint" : "hc-red-flags-hint"}
         className="mt-4 max-h-[28rem] min-h-28 w-full resize-y rounded-field [field-sizing:content] bg-surface px-4 py-3 text-[15px] leading-relaxed text-ink shadow-inset outline-none placeholder:text-subtle focus:shadow-[0_0_0_1.5px_var(--color-ink)] focus-visible:outline-none aria-[invalid=true]:shadow-[0_0_0_1.5px_var(--color-danger)]"
       />
       <div className="mt-1.5 flex justify-end">
@@ -172,18 +278,19 @@ export function AlertsSection({ values, errors, set }: FieldSectionProps) {
 
       <div className="mt-4 flex flex-wrap items-center gap-2">
         <span className="text-[13px] text-muted">Desde antecedentes:</span>
-        {alerts.length > 0 ? (
-          alerts.map((label) => (
+        {fromHistory.length > 0 ? (
+          fromHistory.map((c) => (
             <span
-              key={label}
+              key={c.value}
               className="inline-flex h-8 items-center gap-1.5 rounded-full bg-surface px-3 text-[13px] font-medium text-ink-2 shadow-inset"
             >
-              <span aria-hidden className="size-2 rounded-full" style={{ backgroundColor: ALERT_DOT }} />
-              {label}
+              {c.tier ? <TierDot tier={c.tier} /> : null}
+              {c.label}
+              {c.tier === "precaution" ? <span className="font-normal text-muted">· precaución</span> : null}
             </span>
           ))
         ) : (
-          <span className="text-[13px] text-subtle">sin condiciones de riesgo marcadas</span>
+          <span className="text-[13px] text-muted">sin condiciones de riesgo marcadas</span>
         )}
       </div>
     </div>

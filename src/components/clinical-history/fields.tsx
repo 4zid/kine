@@ -34,7 +34,9 @@ export function SectionCard({
     >
       <header className="mb-6 flex items-start justify-between gap-4 sm:mb-7">
         <div className="min-w-0">
-          <p className="tabular text-[13px] font-medium text-subtle">{String(index + 1).padStart(2, "0")}</p>
+          <p aria-hidden className="tabular text-[13px] font-medium text-muted">
+            {String(index + 1).padStart(2, "0")}
+          </p>
           <h3
             id={`${domId}-title`}
             tabIndex={-1}
@@ -168,6 +170,7 @@ export function SideSelect({
   label?: string;
 }) {
   const id = useId();
+  const errorId = `${id}-error`;
   return (
     <div className={cn("min-w-0", className)}>
       <div className={cn(miniBox, "pr-8", error && "shadow-[0_0_0_1.5px_var(--color-danger)]")}>
@@ -178,6 +181,8 @@ export function SideSelect({
           id={id}
           value={value}
           onChange={(e) => onChange(e.target.value as Side)}
+          aria-invalid={error ? true : undefined}
+          aria-describedby={error ? errorId : undefined}
           className="mt-1 w-full cursor-pointer appearance-none bg-transparent text-[15px] text-ink outline-none focus-visible:outline-none"
         >
           {SIDE_OPTIONS.map((o) => (
@@ -199,7 +204,7 @@ export function SideSelect({
           <path d="m5 7.5 5 5 5-5" />
         </svg>
       </div>
-      <FieldError>{error}</FieldError>
+      <FieldError id={errorId}>{error}</FieldError>
     </div>
   );
 }
@@ -230,6 +235,9 @@ export function VitalTile({
 }) {
   const id = useId();
   const errorId = `${id}-error`;
+  const hintId = `${id}-hint`;
+  const unitId = `${id}-unit`;
+  const describedBy = [unit ? unitId : null, error ? errorId : null, hint ? hintId : null].filter(Boolean).join(" ");
   return (
     <div className="flex min-w-0 flex-col">
       <div
@@ -242,7 +250,11 @@ export function VitalTile({
           <label htmlFor={id} className="text-[13px] leading-snug font-medium text-muted">
             {label}
           </label>
-          {unit ? <span className="shrink-0 text-[13px] text-subtle">{unit}</span> : null}
+          {unit ? (
+            <span id={unitId} className="shrink-0 text-[13px] text-muted">
+              {unit}
+            </span>
+          ) : null}
         </div>
         <div>
           <input
@@ -255,10 +267,14 @@ export function VitalTile({
             placeholder={placeholder}
             onChange={(e) => onChange(e.target.value)}
             aria-invalid={error ? true : undefined}
-            aria-describedby={error ? errorId : undefined}
+            aria-describedby={describedBy || undefined}
             className="display tabular w-full min-w-0 bg-transparent text-[32px] font-medium text-ink outline-none placeholder:text-line-strong focus-visible:outline-none sm:text-[38px]"
           />
-          {hint ? <p className="mt-1 text-xs text-subtle">{hint}</p> : null}
+          {hint ? (
+            <p id={hintId} className="mt-1 text-xs text-muted">
+              {hint}
+            </p>
+          ) : null}
         </div>
       </div>
       <FieldError id={errorId}>{error}</FieldError>
@@ -267,7 +283,7 @@ export function VitalTile({
 }
 
 // ---------------------------------------------------------------------------
-// Stepper numérico (horas de sueño, sesiones indicadas)
+// Stepper numérico (horas de sueño, sesiones prescriptas)
 // ---------------------------------------------------------------------------
 export function NumberStepper({
   label,
@@ -358,7 +374,7 @@ export function NumberStepper({
 export function CharCount({ value, max }: { value: string; max: number }) {
   if (value.length < max * 0.8) return null;
   return (
-    <span className={cn("tabular text-xs", value.length > max ? "text-danger" : "text-subtle")}>
+    <span className={cn("tabular text-xs", value.length > max ? "text-danger" : "text-muted")}>
       {value.length.toLocaleString("es-AR")}/{max.toLocaleString("es-AR")}
     </span>
   );
@@ -391,6 +407,8 @@ export function TextAreaField({
 }: TextFieldProps & { rows?: number }) {
   const id = useId();
   const errorId = `${id}-error`;
+  const hintId = `${id}-hint`;
+  const describedBy = error ? errorId : hint ? hintId : undefined;
   return (
     <div className={cn("flex min-w-0 flex-col gap-1.5", className)}>
       <div className="flex items-baseline justify-between gap-2">
@@ -406,14 +424,16 @@ export function TextAreaField({
         placeholder={placeholder}
         onChange={(e) => onChange(e.target.value)}
         aria-invalid={error ? true : undefined}
-        aria-describedby={error ? errorId : undefined}
+        aria-describedby={describedBy}
         style={{ minHeight: `calc(${rows} * 1.625em + 1.5rem)` }}
         className={cn(fieldBase, "max-h-[28rem] resize-y py-3 leading-relaxed [field-sizing:content]")}
       />
       {error ? (
         <FieldError id={errorId}>{error}</FieldError>
       ) : hint ? (
-        <p className="text-[13px] text-muted">{hint}</p>
+        <p id={hintId} className="text-[13px] text-muted">
+          {hint}
+        </p>
       ) : null}
     </div>
   );
@@ -432,6 +452,8 @@ export function TextInputField({
 }: TextFieldProps & { list?: string }) {
   const id = useId();
   const errorId = `${id}-error`;
+  const hintId = `${id}-hint`;
+  const describedBy = error ? errorId : hint ? hintId : undefined;
   return (
     <div className={cn("flex min-w-0 flex-col gap-1.5", className)}>
       <label htmlFor={id} className="text-[13px] font-medium text-ink-2">
@@ -446,13 +468,15 @@ export function TextInputField({
         placeholder={placeholder}
         onChange={(e) => onChange(e.target.value)}
         aria-invalid={error ? true : undefined}
-        aria-describedby={error ? errorId : undefined}
+        aria-describedby={describedBy}
         className={cn(fieldBase, "h-12")}
       />
       {error ? (
         <FieldError id={errorId}>{error}</FieldError>
       ) : hint ? (
-        <p className="text-[13px] text-muted">{hint}</p>
+        <p id={hintId} className="text-[13px] text-muted">
+          {hint}
+        </p>
       ) : null}
     </div>
   );

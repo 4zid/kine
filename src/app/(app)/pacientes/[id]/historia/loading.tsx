@@ -5,9 +5,10 @@ function Bar({ className }: { className: string }) {
 /** Esqueleto de la historia clínica (índice + tarjetas de sección). */
 export default function ClinicalHistoryLoading() {
   return (
-    <div aria-busy="true" aria-label="Cargando historia clínica" className="animate-fade-in">
-      <div className="mb-6 space-y-3">
-        <Bar className="h-9 w-64" />
+    <div role="status" aria-busy="true" className="animate-fade-in">
+      <span className="sr-only">Cargando historia clínica…</span>
+      <div className="mb-6 space-y-2.5">
+        <Bar className="h-7 w-48" />
         <Bar className="h-4 w-80 max-w-full" />
       </div>
       <div className="mb-4 flex gap-1.5 overflow-hidden xl:hidden">

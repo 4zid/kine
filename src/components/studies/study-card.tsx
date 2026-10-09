@@ -1,7 +1,7 @@
 "use client";
 
 import { Download, Eye, Pencil, Trash2 } from "lucide-react";
-import { useState, useTransition } from "react";
+import { useState, useTransition, type CSSProperties } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
@@ -20,18 +20,24 @@ export function StudyCard({
   study,
   services,
   onEdit,
+  onDeleted,
   index = 0,
 }: {
   study: StudyListItem;
   services: StudyServices;
   onEdit: () => void;
+  /** Se eliminó el estudio (la tarjeta va a desaparecer: quien la lista maneja el foco). */
+  onDeleted?: () => void;
   index?: number;
 }) {
   const [expanded, setExpanded] = useState(false);
   const [busy, setBusy] = useState<"view" | "download" | null>(null);
+  // Las miniaturas usan URLs firmadas de corta duración: si venció, se muestra el ícono del archivo.
+  const [failedThumb, setFailedThumb] = useState<string | null>(null);
   const [, startTransition] = useTransition();
   const kind = STUDY_KINDS[study.kind];
   const file = study.file;
+  const thumbnailUrl = study.thumbnailUrl && study.thumbnailUrl !== failedThumb ? study.thumbnailUrl : null;
   const viewable = file ? isViewableInBrowser(file.mime_type) : false;
   const longFindings = (study.findings?.length ?? 0) > LONG_FINDINGS || (study.findings?.split("\n").length ?? 0) > 4;
 
@@ -69,8 +75,9 @@ export function StudyCard({
 
   return (
     <article
-      className="flex min-w-0 animate-fade-up flex-col rounded-card bg-surface p-5 sm:p-6"
-      style={{ animationDelay: `${Math.min(index, 8) * 40}ms` }}
+      // El escalonado se omite con prefers-reduced-motion (si no, la tarjeta queda oculta durante la demora).
+      className="flex min-w-0 animate-fade-up flex-col rounded-card bg-surface p-5 motion-safe:[animation-delay:var(--stagger)] sm:p-6"
+      style={{ "--stagger": `${Math.min(index, 8) * 40}ms` } as CSSProperties}
       aria-labelledby={`study-${study.id}-title`}
     >
       <header className="flex items-center justify-between gap-3">
@@ -86,7 +93,7 @@ export function StudyCard({
           <span className="truncate text-[13px] text-muted">{kind.label}</span>
         </div>
         <span className="tabular shrink-0 text-[13px] text-muted">
-          {study.dateLabel ?? <span className="text-subtle">Sin fecha</span>}
+          {study.dateLabel ?? <span className="text-muted">Sin fecha</span>}
         </span>
       </header>
 
@@ -111,12 +118,12 @@ export function StudyCard({
           ) : null}
         </div>
       ) : (
-        <p className="mt-2.5 text-[14px] text-subtle">Sin hallazgos cargados.</p>
+        <p className="mt-2.5 text-[14px] text-muted">Sin hallazgos cargados.</p>
       )}
 
       {file ? (
         <div className="mt-5">
-          {study.thumbnailUrl ? (
+          {thumbnailUrl ? (
             <button
               type="button"
               onClick={() => openFile("view")}
@@ -125,10 +132,11 @@ export function StudyCard({
             >
               {/* eslint-disable-next-line @next/next/no-img-element -- URL firmada temporal de Storage privado */}
               <img
-                src={study.thumbnailUrl}
+                src={thumbnailUrl}
                 alt=""
                 loading="lazy"
                 decoding="async"
+                onError={() => setFailedThumb(thumbnailUrl)}
                 className="size-full object-cover transition-transform duration-500 group-hover:scale-[1.03]"
               />
               <span className="absolute inset-x-0 bottom-0 flex items-end justify-between gap-3 bg-gradient-to-t from-black/60 to-transparent p-3 pt-10 text-left text-white">
@@ -141,17 +149,17 @@ export function StudyCard({
             </button>
           ) : null}
           {/* Angosto: acciones debajo a todo el ancho. Ancho (@sm): todo en una línea. */}
-          <div className={cn("@container", study.thumbnailUrl && "mt-2")}>
+          <div className={cn("@container", thumbnailUrl && "mt-2")}>
             <div className="flex flex-col gap-3 rounded-panel bg-surface-2 p-3 @sm:flex-row @sm:items-center">
               <div className="flex min-w-0 flex-1 items-center gap-3">
-                {!study.thumbnailUrl ? <FileTypeIcon mime={file.mime_type} /> : null}
+                {!thumbnailUrl ? <FileTypeIcon mime={file.mime_type} /> : null}
                 <div className="min-w-0 flex-1">
-                  {!study.thumbnailUrl ? (
+                  {!thumbnailUrl ? (
                     <p className="truncate text-[14px] font-medium text-ink" title={file.name}>
                       {file.name}
                     </p>
                   ) : null}
-                  <p className={cn("tabular text-[13px] text-muted", study.thumbnailUrl ? "pl-1" : "mt-0.5")}>
+                  <p className={cn("tabular text-[13px] text-muted", thumbnailUrl ? "pl-1" : "mt-0.5")}>
                     {FILE_CATEGORY_LABEL[fileCategory(file.mime_type)]} · {fileSize(file.size_bytes)}
                   </p>
                 </div>
@@ -188,7 +196,7 @@ export function StudyCard({
       ) : null}
 
       <footer className="mt-auto flex items-center justify-between gap-3 pt-5">
-        <span className="text-[13px] text-subtle">Cargado {study.createdLabel}</span>
+        <span className="text-[13px] text-muted">Cargado {study.createdLabel}</span>
         <div className="flex items-center gap-1">
           <Button
             variant="ghost"
@@ -204,12 +212,16 @@ export function StudyCard({
             title="¿Eliminar este estudio?"
             description={
               file
-                ? `Se eliminarán “${study.title}” y su archivo adjunto. Esta acción no se puede deshacer.`
-                : `Se eliminará “${study.title}”. Esta acción no se puede deshacer.`
+                ? `Se eliminarán “${study.title}” y su archivo adjunto, que no se puede recuperar. Queda un registro de los datos del estudio para la custodia legal de la historia clínica.`
+                : `Se eliminará “${study.title}” de la app. Queda un registro de sus datos para la custodia legal de la historia clínica.`
             }
             confirmLabel="Eliminar"
             successMessage="Estudio eliminado"
-            onConfirm={() => services.deleteStudy(study.id)}
+            onConfirm={async () => {
+              const res = await services.deleteStudy(study.id);
+              if (res.ok) onDeleted?.();
+              return res;
+            }}
             trigger={(open) => (
               <Button
                 variant="ghost"

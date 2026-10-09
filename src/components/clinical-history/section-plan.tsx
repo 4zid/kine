@@ -41,7 +41,7 @@ export function PlanSection({ values, errors, set }: FieldSectionProps) {
 
       <div className="grid gap-5 sm:grid-cols-[220px_minmax(0,1fr)]">
         <NumberStepper
-          label="Sesiones indicadas"
+          label="Sesiones prescriptas"
           value={values.prescribed_sessions}
           onChange={(v) => set("prescribed_sessions", v)}
           step={1}

@@ -6,12 +6,17 @@ import { cn } from "@/lib/utils";
 
 type Status = { hasData: Record<SectionId, boolean>; errors: Partial<Record<SectionId, number>> };
 
+/** "smooth", salvo que el usuario pida menos movimiento (prefers-reduced-motion). */
+export function scrollBehavior(): ScrollBehavior {
+  if (typeof window === "undefined" || typeof window.matchMedia !== "function") return "auto";
+  return window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth";
+}
+
 /** Desplaza suavemente hasta una sección y mueve el foco a su título. */
 export function scrollToSection(id: SectionId) {
   const el = document.getElementById(sectionDomId(id));
   if (!el) return;
-  const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-  el.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "start" });
+  el.scrollIntoView({ behavior: scrollBehavior(), block: "start" });
   document.getElementById(`${sectionDomId(id)}-title`)?.focus({ preventScroll: true });
 }
 
@@ -78,7 +83,7 @@ export function SectionIndex({ hasData, errors, variant }: Status & { variant: "
     const chip = bar?.querySelector<HTMLElement>(`[data-chip="${active}"]`);
     if (!bar || !chip || bar.scrollWidth <= bar.clientWidth) return;
     const left = chip.offsetLeft - bar.clientWidth / 2 + chip.offsetWidth / 2;
-    bar.scrollTo({ left: Math.max(0, left), behavior: "smooth" });
+    bar.scrollTo({ left: Math.max(0, left), behavior: scrollBehavior() });
   }, [active]);
 
   const go = (e: MouseEvent<HTMLAnchorElement>, id: SectionId) => {
@@ -141,7 +146,7 @@ export function SectionIndex({ hasData, errors, variant }: Status & { variant: "
                       isActive ? "bg-surface-2 font-medium text-ink" : "text-ink-2 hover:bg-surface-2/70",
                     )}
                   >
-                    <span className="tabular w-5 text-[12px] text-subtle">{String(i + 1).padStart(2, "0")}</span>
+                    <span aria-hidden className="tabular w-5 text-[12px] text-muted">{String(i + 1).padStart(2, "0")}</span>
                     <span className="min-w-0 flex-1 truncate">{s.short}</span>
                     <StatusDot hasData={hasData[s.id]} errors={errors[s.id] ?? 0} />
                   </a>
@@ -160,10 +165,10 @@ export function SectionIndex({ hasData, errors, variant }: Status & { variant: "
       className="sticky top-16 z-20 -mx-4 mb-4 bg-canvas/85 py-2 backdrop-blur-md sm:-mx-6 lg:top-0 lg:-mx-8 xl:hidden"
     >
       <div ref={barRef} className="scrollbar-none flex items-center gap-1.5 overflow-x-auto px-4 sm:px-6 lg:px-8">
-        <span
-          className="tabular inline-flex h-9 shrink-0 items-center gap-2 rounded-full bg-ink px-3 text-[13px] font-semibold text-white"
-          aria-label={`${done} de ${SECTIONS.length} secciones con datos`}
-        >
+        <span className="tabular inline-flex h-10 shrink-0 items-center gap-2 rounded-full bg-ink px-3 text-[13px] font-semibold text-white">
+          <span className="sr-only">
+            {done} de {SECTIONS.length} secciones con datos
+          </span>
           <span aria-hidden className="relative size-4">
             <svg viewBox="0 0 20 20" className="size-4 -rotate-90">
               <circle cx="10" cy="10" r="8" fill="none" stroke="rgb(255 255 255 / 0.25)" strokeWidth="3" />
@@ -179,7 +184,9 @@ export function SectionIndex({ hasData, errors, variant }: Status & { variant: "
               />
             </svg>
           </span>
-          {done}/{SECTIONS.length}
+          <span aria-hidden>
+            {done}/{SECTIONS.length}
+          </span>
         </span>
         {SECTIONS.map((s) => {
           const isActive = active === s.id;
@@ -192,7 +199,7 @@ export function SectionIndex({ hasData, errors, variant }: Status & { variant: "
               aria-current={isActive ? "location" : undefined}
               aria-label={`${s.title}${label(s.id)}`}
               className={cn(
-                "inline-flex h-9 shrink-0 items-center gap-2 rounded-full px-3.5 text-[13px] font-medium whitespace-nowrap transition-colors",
+                "inline-flex h-10 shrink-0 items-center gap-2 rounded-full px-3.5 text-[13px] font-medium whitespace-nowrap transition-colors",
                 isActive ? "bg-ink text-white" : "bg-surface text-ink-2 shadow-inset hover:bg-surface-2",
               )}
             >
