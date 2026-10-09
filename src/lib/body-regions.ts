@@ -263,7 +263,7 @@ const BACK: BodyRegion[] = [
     key: "hamstring_{side}",
     view: "back",
     group: "lower_limb",
-    labels: ["Isquiotibiales derecho", "Isquiotibiales izquierdo"],
+    labels: ["Isquiotibiales derechos", "Isquiotibiales izquierdos"],
     shorts: ["Isquios der.", "Isquios izq."],
   }),
   ...pair({
@@ -277,7 +277,7 @@ const BACK: BodyRegion[] = [
     key: "calf_{side}",
     view: "back",
     group: "lower_limb",
-    labels: ["Gemelos derecho", "Gemelos izquierdo"],
+    labels: ["Gemelos derechos", "Gemelos izquierdos"],
     shorts: ["Gemelos der.", "Gemelos izq."],
   }),
   ...pair({

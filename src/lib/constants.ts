@@ -141,20 +141,44 @@ export const HEALTH_INSURANCE_SUGGESTIONS = [
 // ---------------------------------------------------------------------------
 // Historia clínica
 // ---------------------------------------------------------------------------
-/** Antecedentes patológicos (checklist). `alert` = relevante para contraindicaciones. */
-export const CONDITIONS: (Option & { alert?: boolean })[] = [
-  { value: "hypertension", label: "Hipertensión" },
-  { value: "diabetes", label: "Diabetes" },
-  { value: "heart_disease", label: "Cardiopatía", alert: true },
-  { value: "pacemaker", label: "Marcapasos", alert: true },
-  { value: "metal_implants", label: "Implantes / prótesis metálicas", alert: true },
-  { value: "anticoagulants", label: "Anticoagulación", alert: true },
-  { value: "dvt", label: "Trombosis venosa", alert: true },
-  { value: "cancer", label: "Cáncer (actual o previo)", alert: true },
-  { value: "pregnancy", label: "Embarazo", alert: true },
-  { value: "epilepsy", label: "Epilepsia", alert: true },
+/**
+ * Antecedentes patológicos (checklist).
+ * `alert` = aparece en los avisos clínicos del paciente y del informe ("Alertas y contraindicaciones").
+ * `severity`: "contraindication" (puede contraindicar técnicas) o "precaution" (requiere precaución
+ * o adaptar la dosis). `hint` resume el motivo. Lista orientativa, no exhaustiva: revisarla con
+ * criterio profesional.
+ */
+export const CONDITIONS: (Option & { alert?: boolean; severity?: "contraindication" | "precaution" })[] = [
+  {
+    value: "hypertension",
+    label: "Hipertensión",
+    alert: true,
+    severity: "precaution",
+    hint: "Precaución con esfuerzos isométricos, Valsalva y algunos agentes físicos; controlar la tensión arterial.",
+  },
+  {
+    value: "diabetes",
+    label: "Diabetes",
+    alert: true,
+    severity: "precaution",
+    hint: "Posible alteración de la sensibilidad (termo/crioterapia, electroterapia) y riesgo de hipoglucemia con el ejercicio.",
+  },
+  { value: "heart_disease", label: "Cardiopatía", alert: true, severity: "contraindication" },
+  { value: "pacemaker", label: "Marcapasos", alert: true, severity: "contraindication" },
+  { value: "metal_implants", label: "Implantes / prótesis metálicas", alert: true, severity: "contraindication" },
+  { value: "anticoagulants", label: "Anticoagulación", alert: true, severity: "contraindication" },
+  { value: "dvt", label: "Trombosis venosa", alert: true, severity: "contraindication" },
+  { value: "cancer", label: "Cáncer (actual o previo)", alert: true, severity: "contraindication" },
+  { value: "pregnancy", label: "Embarazo", alert: true, severity: "contraindication" },
+  { value: "epilepsy", label: "Epilepsia", alert: true, severity: "contraindication" },
   { value: "asthma_copd", label: "Asma / EPOC" },
-  { value: "osteoporosis", label: "Osteoporosis" },
+  {
+    value: "osteoporosis",
+    label: "Osteoporosis",
+    alert: true,
+    severity: "contraindication",
+    hint: "Evitar manipulaciones de alta velocidad, terapia manual vigorosa y ondas de choque sobre hueso frágil.",
+  },
   { value: "osteoarthritis", label: "Artrosis" },
   { value: "rheumatoid_arthritis", label: "Artritis reumatoidea" },
   { value: "fibromyalgia", label: "Fibromialgia" },
@@ -166,7 +190,7 @@ export const CONDITIONS: (Option & { alert?: boolean })[] = [
   { value: "parkinson", label: "Parkinson" },
   { value: "multiple_sclerosis", label: "Esclerosis múltiple" },
   { value: "anxiety_depression", label: "Ansiedad / depresión" },
-  { value: "skin_sensitivity", label: "Alteraciones de sensibilidad", alert: true },
+  { value: "skin_sensitivity", label: "Alteraciones de sensibilidad", alert: true, severity: "contraindication" },
 ];
 
 export const SMOKING_OPTIONS: Option<Smoking>[] = [
@@ -331,6 +355,12 @@ export const PAIN_SERIES = {
   after: { label: "Al final", color: "#3B3BF2" },
 } as const;
 
+/** Nombre de la escala de dolor tal como se muestra en la UI y el informe. */
+export const PAIN_SCALE_NAME = "EVA (0–10)";
+
+/** Anclas verbales únicas de la escala (mismo texto en el mapa corporal, las sesiones y el informe). */
+export const PAIN_SCALE_ANCHORS = "0 = sin dolor · 10 = el peor dolor imaginable";
+
 /** Etiquetas de la escala EVA (0-10). */
 export const PAIN_SCALE_LABELS: Record<number, string> = {
   0: "Sin dolor",
@@ -343,7 +373,7 @@ export const PAIN_SCALE_LABELS: Record<number, string> = {
   7: "Intenso",
   8: "Intenso",
   9: "Muy intenso",
-  10: "Insoportable",
+  10: "El peor imaginable",
 };
 
 // ---------------------------------------------------------------------------

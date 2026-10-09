@@ -17,8 +17,9 @@ export function Chip({ selected, dot, size = "md", className, children, type = "
       type={type}
       aria-pressed={selected}
       className={cn(
-        "inline-flex items-center gap-2 rounded-full font-medium whitespace-nowrap transition-[background-color,color,transform] duration-150 select-none active:scale-[0.97]",
-        size === "md" ? "h-10 px-4 text-sm" : "h-8 px-3 text-[13px]",
+        "relative inline-flex items-center gap-2 rounded-full font-medium whitespace-nowrap transition-[background-color,color,transform] duration-150 select-none active:scale-[0.97]",
+        // sm: 32px visuales con área táctil de 40px (hit-area).
+        size === "md" ? "h-10 px-4 text-sm" : "hit-area h-8 px-3 text-[13px]",
         selected ? "bg-ink text-white" : "bg-surface-2 text-ink hover:bg-surface-3",
         className,
       )}

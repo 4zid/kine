@@ -16,7 +16,7 @@ export type ButtonVariant =
 export type ButtonSize = "sm" | "md" | "lg" | "icon-sm" | "icon" | "icon-lg";
 
 const base =
-  "inline-flex shrink-0 items-center justify-center gap-2 rounded-full font-medium whitespace-nowrap select-none transition-[background-color,color,box-shadow,transform,opacity] duration-150 active:scale-[0.98] disabled:pointer-events-none disabled:opacity-45 [&_svg]:shrink-0";
+  "relative inline-flex shrink-0 items-center justify-center gap-2 rounded-full font-medium whitespace-nowrap select-none transition-[background-color,color,box-shadow,transform,opacity] duration-150 active:scale-[0.98] disabled:pointer-events-none disabled:opacity-45 [&_svg]:shrink-0";
 
 const variants: Record<ButtonVariant, string> = {
   primary: "bg-ink text-white hover:bg-ink-2 shadow-[0_1px_0_rgb(255_255_255/0.08)_inset]",
@@ -27,14 +27,16 @@ const variants: Record<ButtonVariant, string> = {
   accent: "bg-accent text-white hover:bg-accent-700",
   danger: "bg-danger text-white hover:bg-danger/90",
   "danger-soft": "bg-danger-50 text-danger hover:bg-danger/15",
-  inverse: "bg-white text-ink hover:bg-white/90",
+  // Va sobre fondos oscuros: anillo de foco blanco para que se vea.
+  inverse: "bg-white text-ink hover:bg-white/90 focus-visible:outline-white",
 };
 
+/** `sm` e `icon-sm` miden 36px pero su área táctil llega a 40px (hit-area). */
 const sizes: Record<ButtonSize, string> = {
-  sm: "h-9 px-4 text-[13px] [&_svg]:size-4",
+  sm: "hit-area h-9 px-4 text-[13px] [&_svg]:size-4",
   md: "h-11 px-5 text-sm [&_svg]:size-[18px]",
   lg: "h-14 px-7 text-[15px] [&_svg]:size-5",
-  "icon-sm": "size-9 [&_svg]:size-4",
+  "icon-sm": "hit-area size-9 [&_svg]:size-4",
   icon: "size-11 [&_svg]:size-[18px]",
   "icon-lg": "size-14 [&_svg]:size-5",
 };
