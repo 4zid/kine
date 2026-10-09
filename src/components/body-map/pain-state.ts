@@ -56,6 +56,25 @@ export function isActivePain(r: Pick<PainRecordItem, "status" | "intensity">): b
   return r.status !== "resolved" && r.intensity > 0;
 }
 
+/** Días transcurridos (AR) entre `day` y `today` ("YYYY-MM-DD"); negativo si es futuro. */
+export function daysAgo(day: string, today: string): number {
+  return Math.round((parseDateOnly(today).getTime() - parseDateOnly(day).getTime()) / 86_400_000);
+}
+
+/** Una zona registrada por primera vez hace como mucho estos días se marca "Nuevo". */
+export const NEW_ZONE_DAYS = 14;
+/** Dolor activo sin actualizar hace más de estos días: se avisa que el dato puede estar viejo. */
+export const STALE_DAYS = 30;
+
+/** true si el dolor activo de la zona no se actualiza hace más de STALE_DAYS. */
+export function isStale(r: Pick<PainRecordItem, "recorded_at" | "status" | "intensity">, today: string): boolean {
+  return isActivePain(r) && daysAgo(recordDay(r), today) > STALE_DAYS;
+}
+
+/**
+ * Tendencia respecto del registro anterior. "new" = primer registro de la zona (la UI solo lo
+ * destaca como "Nuevo" si es reciente: ver NEW_ZONE_DAYS).
+ */
 export function trendOf(state: RegionState): "up" | "down" | "same" | "new" {
   if (!state.previous) return "new";
   const diff = state.latest.intensity - state.previous.intensity;
@@ -84,6 +103,7 @@ export function paintFromStates(states: Map<string, RegionState>): Record<string
       status: r.status,
       point: r.point_x != null && r.point_y != null ? denormalizePoint(r.point_x, r.point_y) : null,
       trend: trendOf(s),
+      day: recordDay(r),
     };
   }
   return out;
@@ -101,7 +121,7 @@ export function timelineDays(sorted: PainRecordItem[]): string[] {
 
 /** "hoy", "ayer", "hace 3 días"… con `today` explícito (lo calcula el servidor). */
 export function relativeDay(day: string, today: string): string {
-  const diff = Math.round((parseDateOnly(today).getTime() - parseDateOnly(day).getTime()) / 86_400_000);
+  const diff = daysAgo(day, today);
   if (diff <= 0) return diff === 0 ? "hoy" : "próximamente";
   if (diff === 1) return "ayer";
   if (diff < 7) return `hace ${diff} días`;

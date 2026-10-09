@@ -111,7 +111,7 @@ export function RegionSearch({
         onFocus={() => setOpen(true)}
         onBlur={() => setOpen(false)}
         onKeyDown={onKeyDown}
-        className="h-10 w-full rounded-full bg-surface-2 pr-9 pl-10 text-sm text-ink outline-none placeholder:text-subtle transition-[background-color,box-shadow] hover:bg-surface-3/70 focus:bg-surface focus:shadow-[0_0_0_1.5px_var(--color-ink)]"
+        className="h-10 w-full rounded-full bg-surface-2 pr-10 pl-10 text-base text-ink outline-none placeholder:text-muted transition-[background-color,box-shadow] hover:bg-surface-3/70 focus:bg-surface focus:shadow-[0_0_0_1.5px_var(--color-ink)] sm:text-sm"
       />
       {query ? (
         <button
@@ -122,9 +122,9 @@ export function RegionSearch({
             setQuery("");
             inputRef.current?.focus();
           }}
-          className="absolute top-1/2 right-1.5 inline-flex size-7 -translate-y-1/2 items-center justify-center rounded-full text-muted hover:bg-surface-3 hover:text-ink"
+          className="absolute top-0 right-0 inline-flex size-10 items-center justify-center rounded-full text-muted hover:bg-surface-3 hover:text-ink"
         >
-          <X className="size-3.5" />
+          <X aria-hidden className="size-4" />
         </button>
       ) : null}
 

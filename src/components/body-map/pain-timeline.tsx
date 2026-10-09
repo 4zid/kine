@@ -2,7 +2,7 @@
 
 import { Pause, Play, RotateCcw } from "lucide-react";
 import { useEffect, useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
-import { cn, formatDate, formatLongDate, painColor } from "@/lib/utils";
+import { cn, formatDate, formatDecimal, formatLongDate, painColor } from "@/lib/utils";
 
 type Props = {
   /** Días con registros ("YYYY-MM-DD", ascendentes). */
@@ -101,7 +101,7 @@ export function PainTimeline({ days, dayLevel, index, onChange, className }: Pro
             <button
               type="button"
               onClick={() => set(last)}
-              className="inline-flex h-9 items-center gap-1.5 rounded-full bg-surface-2 px-3 text-[13px] font-medium text-ink transition-colors hover:bg-surface-3"
+              className="inline-flex h-10 items-center gap-1.5 rounded-full bg-surface-2 px-3.5 text-[13px] font-medium text-ink transition-colors hover:bg-surface-3"
             >
               <RotateCcw aria-hidden className="size-3.5" />
               Actual
@@ -134,7 +134,9 @@ export function PainTimeline({ days, dayLevel, index, onChange, className }: Pro
         aria-valuemin={0}
         aria-valuemax={last}
         aria-valuenow={index}
-        aria-valuetext={formatLongDate(days[index])}
+        aria-valuetext={`${formatLongDate(days[index])}: ${
+          dayLevel[index] != null ? `EVA promedio ${formatDecimal(dayLevel[index])} de 10` : "sin dolor activo"
+        }`}
         onKeyDown={onKeyDown}
         onPointerDown={onPointerDown}
         onPointerMove={(e) => {
@@ -158,7 +160,7 @@ export function PainTimeline({ days, dayLevel, index, onChange, className }: Pro
           );
         })}
       </div>
-      <div className="mt-1.5 flex justify-between text-[11px] text-subtle">
+      <div className="mt-1.5 flex justify-between text-[11px] text-muted">
         <span>{formatDate(days[0], { withYear: false })}</span>
         <span>{formatDate(days[last], { withYear: false })}</span>
       </div>
