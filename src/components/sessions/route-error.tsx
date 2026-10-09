@@ -20,7 +20,7 @@ export function RouteError({
   }, [error]);
 
   return (
-    <div className="rounded-card bg-surface print:hidden">
+    <div role="alert" className="rounded-card bg-surface print:hidden">
       <EmptyState
         icon={<TriangleAlert />}
         title={title}

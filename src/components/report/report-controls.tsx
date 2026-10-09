@@ -28,15 +28,15 @@ const OPTIONS: { value: PeriodKind; label: ReactNode }[] = [
 /** Botón negro "Imprimir / PDF" (el diálogo del navegador permite guardar como PDF). */
 export function PrintButton({ className }: { className?: string }) {
   return (
-    <Button size="lg" icon={<Printer />} onClick={() => window.print()} className={className}>
+    <Button icon={<Printer />} onClick={() => window.print()} className={className}>
       Imprimir / PDF
     </Button>
   );
 }
 
 /**
- * Controles del informe (no se imprimen): período (todo / 30 días / personalizado con
- * desde–hasta en la URL) y botón de impresión.
+ * Encabezado de la pestaña y controles del informe (no se imprimen): título, botón de impresión
+ * y período (todo / 30 días / personalizado con desde–hasta en la URL).
  */
 export function ReportControls({
   kind,
@@ -73,20 +73,26 @@ export function ReportControls({
 
   return (
     <div className="flex flex-col gap-4 print:hidden">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex min-w-0 items-center gap-3">
-          <div className="scrollbar-none -mx-4 overflow-x-auto px-4 sm:mx-0 sm:px-0">
-            <SegmentedControl<PeriodKind>
-              aria-label="Período del informe"
-              options={OPTIONS}
-              value={selected}
-              onChange={choose}
-              className="bg-surface p-1.5 [&>button]:h-10"
-            />
-          </div>
-          {pending ? <Spinner className="size-5 text-muted" /> : null}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <div className="min-w-0">
+          <h2 className="display text-2xl font-medium text-ink">Informe</h2>
+          <p className="mt-1 text-[14px] text-muted sm:text-[15px]">
+            Vista previa del documento para imprimir o guardar como PDF.
+          </p>
         </div>
         <PrintButton className="self-start sm:self-auto" />
+      </div>
+      <div className="flex min-w-0 items-center gap-3">
+        <div className="scrollbar-none -mx-4 overflow-x-auto px-4 sm:mx-0 sm:px-0">
+          <SegmentedControl<PeriodKind>
+            aria-label="Período del informe"
+            options={OPTIONS}
+            value={selected}
+            onChange={choose}
+            className="bg-surface p-1.5 [&>button]:h-10"
+          />
+        </div>
+        {pending ? <Spinner className="size-5 text-muted" /> : null}
       </div>
 
       {selected === "personalizado" ? (

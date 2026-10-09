@@ -6,13 +6,17 @@ function Bone({ className }: { className?: string }) {
 export function ReportSkeleton() {
   return (
     <div className="flex flex-col gap-6 print:hidden" role="status" aria-label="Cargando informe">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <Bone className="h-12 w-[420px] max-w-full" />
-        <Bone className="h-14 w-48" />
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <div className="space-y-2.5">
+          <Bone className="h-7 w-28" />
+          <Bone className="h-4 w-72 max-w-full" />
+        </div>
+        <Bone className="h-11 w-40" />
       </div>
+      <Bone className="h-12 w-[420px] max-w-full" />
       <div className="space-y-3 pt-2">
         <Bone className="h-4 w-72" />
-        <Bone className="h-12 w-96 max-w-full" />
+        <Bone className="h-10 w-80 max-w-full" />
       </div>
       <div className="grid gap-5 md:grid-cols-2">
         {[0, 1].map((i) => (

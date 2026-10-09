@@ -59,6 +59,32 @@ export function rangeTitle(from: string, to: string): { main: string; year: stri
   return { main: `${a.day} ${a.month} – ${b.day} ${b.month}`, year: String(b.year) };
 }
 
+/**
+ * Inicio del día siguiente a `date` en Argentina (UTC−3, sin horario de verano), como timestamptz:
+ * sirve para pedir registros con recorded_at hasta el final de `date` (`.lt(...)`).
+ */
+export function nextDayStartAR(date: string): string {
+  return `${addDays(date, 1)}T00:00:00-03:00`;
+}
+
+/** Último registro de cada zona (por recorded_at y, a igual momento, por created_at). */
+export function latestPerRegion<
+  T extends { region: string | null; recorded_at: string | null; created_at: string | null },
+>(rows: readonly T[]): T[] {
+  const time = (v: string | null) => (v ? Date.parse(v) || 0 : 0);
+  const sorted = [...rows].sort(
+    (a, b) => time(b.recorded_at) - time(a.recorded_at) || time(b.created_at) - time(a.created_at),
+  );
+  const seen = new Set<string>();
+  const out: T[] = [];
+  for (const r of sorted) {
+    if (!r.region || seen.has(r.region)) continue;
+    seen.add(r.region);
+    out.push(r);
+  }
+  return out;
+}
+
 // ---------------------------------------------------------------------------
 // Etiquetas
 // ---------------------------------------------------------------------------
@@ -74,9 +100,14 @@ export function specialtyLabels(values: string[] | null | undefined): string[] {
   return (values ?? []).map((v) => SPECIALTIES.find((s) => s.value === v)?.label ?? v);
 }
 
-export function conditionMeta(value: string): { label: string; alert: boolean } {
-  const c = CONDITIONS.find((x) => x.value === value);
-  return { label: c?.label ?? value, alert: Boolean(c?.alert) };
+/**
+ * Etiqueta del antecedente y si aparece en "Alertas y contraindicaciones". `precaution` distingue
+ * los que requieren precaución (no contraindicación) cuando el catálogo lo indica con `severity`.
+ */
+export function conditionMeta(value: string): { label: string; alert: boolean; precaution: boolean } {
+  const c: { label: string; alert?: boolean; severity?: string } | undefined = CONDITIONS.find((x) => x.value === value);
+  const alert = Boolean(c?.alert);
+  return { label: c?.label ?? value, alert, precaution: alert && c?.severity === "precaution" };
 }
 
 /** 30123456 → "DNI 30.123.456". */

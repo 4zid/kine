@@ -23,18 +23,27 @@ export default async function EditSessionPage({ params }: PageProps<"/pacientes/
   const supabase = await createClient();
   const today = todayISO();
 
-  const [{ data: session }, { data: timeline }] = await Promise.all([
+  const [{ data: session, error }, { data: timeline, error: timelineError }] = await Promise.all([
     supabase.from("treatment_sessions").select("*").eq("id", sessionId).eq("patient_id", patient.id).maybeSingle(),
-    // Liviano: solo para numerar la sesión dentro del tratamiento.
+    // Liviano y ordenado: solo las sesiones realizadas, para numerar la sesión dentro del tratamiento.
     supabase
       .from("treatment_sessions")
       .select("id, session_date, start_time, attendance, pain_before, pain_after, created_at")
       .eq("patient_id", patient.id)
+      .eq("attendance", "attended")
+      .lte("session_date", today)
+      .order("session_date", { ascending: true })
+      .order("start_time", { ascending: true, nullsFirst: true })
+      .order("created_at", { ascending: true })
       .limit(1000),
   ]);
+  if (error) throw new Error("No se pudo cargar la sesión.");
   if (!session) notFound();
 
-  const number = computeSessionStats(timeline ?? [], today).numbers[session.id] ?? null;
+  const number = timelineError ? null : (computeSessionStats(timeline ?? [], today).numbers[session.id] ?? null);
+  const attendedSlots = timelineError
+    ? undefined
+    : (timeline ?? []).filter((s) => s.id !== session.id).map((s) => ({ date: s.session_date, time: s.start_time }));
   const listHref = `/pacientes/${patient.id}/sesiones`;
 
   return (
@@ -44,6 +53,7 @@ export default async function EditSessionPage({ params }: PageProps<"/pacientes/
       today={today}
       cancelHref={listHref}
       sessionNumber={number}
+      attendedSlots={attendedSlots}
       footerStart={
         <DeleteSessionButton
           patientId={patient.id}
