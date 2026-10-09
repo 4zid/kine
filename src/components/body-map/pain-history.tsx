@@ -1,7 +1,7 @@
 "use client";
 
-import { CalendarDays, MapPin, Trash2 } from "lucide-react";
-import { useId, useState } from "react";
+import { CalendarDays, MapPin, Pencil, Trash2 } from "lucide-react";
+import { useId, useMemo, useState } from "react";
 import { Badge, PainBadge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
@@ -9,24 +9,36 @@ import { PAIN_FREQUENCY, PAIN_STATUS, PAIN_TYPES } from "@/lib/constants";
 import type { ActionState } from "@/lib/types";
 import { formatDate, painColor } from "@/lib/utils";
 import { asPainStatus, recordDay, relativeDay } from "./pain-state";
+import { sessionShortLabel } from "./session-label";
 import type { PainRecordItem, SessionOption } from "./types";
 
 const TYPE_LABEL = Object.fromEntries(PAIN_TYPES.map((o) => [o.value, o.label]));
 const FREQ_LABEL = Object.fromEntries(PAIN_FREQUENCY.map((o) => [o.value, o.label]));
 
-/** Historial de una zona: mini gráfico de intensidad + lista de registros (borrables). */
+/** Historial de una zona: mini gráfico de intensidad + lista de registros (editables y borrables). */
 export function PainHistory({
   records,
   sessions,
+  linkedSessions = [],
   today,
   onDelete,
+  onEdit,
 }: {
   /** Registros de la zona, del más viejo al más nuevo. */
   records: PainRecordItem[];
   sessions: SessionOption[];
+  /** Sesiones vinculadas que no están entre `sessions` (para nombrarlas). */
+  linkedSessions?: SessionOption[];
   today: string;
   onDelete: (recordId: string) => Promise<ActionState>;
+  /** Si se define, cada registro ofrece "Editar" (corregir errores de carga). */
+  onEdit?: (record: PainRecordItem) => void;
 }) {
+  const sessionById = useMemo(
+    () => new Map([...linkedSessions, ...sessions].map((s) => [s.id, s] as const)),
+    [sessions, linkedSessions],
+  );
+
   if (records.length === 0) {
     return (
       <div className="rounded-panel bg-surface-2 px-5 py-6 text-center">
@@ -36,11 +48,7 @@ export function PainHistory({
     );
   }
 
-  const sessionLabel = (id: string | null) => {
-    if (!id) return null;
-    const s = sessions.find((x) => x.id === id);
-    return s ? `Sesión del ${formatDate(s.session_date)}` : "Sesión vinculada";
-  };
+  const sessionLabel = (id: string | null) => (id ? sessionShortLabel(sessionById.get(id)) : null);
 
   return (
     <div className="space-y-4">
@@ -66,8 +74,8 @@ export function PainHistory({
                   {r.intensity > 0 ? (
                     <PainBadge intensity={r.intensity} size="lg" className="shrink-0" />
                   ) : (
-                    <span className="inline-flex size-9 shrink-0 items-center justify-center rounded-full bg-success-50 text-xs font-semibold text-success">
-                      0
+                    <span className="inline-flex size-9 shrink-0 items-center justify-center rounded-full bg-success-50 text-xs font-semibold text-success-ink">
+                      <span className="sr-only">EVA </span>0
                     </span>
                   )}
                   <div className="min-w-0 flex-1">
@@ -85,24 +93,39 @@ export function PainHistory({
                       ) : null}
                     </p>
                   </div>
-                  <ConfirmDialog
-                    title="¿Eliminar este registro?"
-                    description={`Se borra el registro del ${formatDate(day)} (EVA ${r.intensity}). Usalo solo para corregir errores: el historial clínico debería conservarse.`}
-                    confirmLabel="Eliminar"
-                    successMessage="Registro eliminado"
-                    onConfirm={() => onDelete(r.id)}
-                    trigger={(open) => (
+                  <div className="-mt-1 -mr-1 flex shrink-0 items-center">
+                    {onEdit ? (
                       <Button
                         variant="ghost"
                         size="icon-sm"
-                        onClick={open}
-                        aria-label={`Eliminar registro del ${formatDate(day)}`}
-                        className="-mt-1 -mr-1 size-10 text-muted hover:text-danger"
+                        onClick={() => onEdit(r)}
+                        aria-label={`Editar registro del ${formatDate(day)} (EVA ${r.intensity})`}
+                        title="Editar (corregir un error de carga)"
+                        className="size-10 text-muted hover:text-ink"
                       >
-                        <Trash2 />
+                        <Pencil />
                       </Button>
-                    )}
-                  />
+                    ) : null}
+                    <ConfirmDialog
+                      title="¿Eliminar este registro?"
+                      description={`Se borra del historial el registro del ${formatDate(day)} (EVA ${r.intensity}). Usalo solo para corregir errores de carga: por custodia legal queda una copia en la auditoría clínica, pero deja de verse en la app.`}
+                      confirmLabel="Eliminar"
+                      successMessage="Registro eliminado"
+                      onConfirm={() => onDelete(r.id)}
+                      trigger={(open) => (
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          onClick={open}
+                          aria-label={`Eliminar registro del ${formatDate(day)} (EVA ${r.intensity})`}
+                          title="Eliminar"
+                          className="size-10 text-muted hover:text-danger"
+                        >
+                          <Trash2 />
+                        </Button>
+                      )}
+                    />
+                  </div>
                 </div>
                 {r.pain_types.length ? (
                   <div className="mt-3 flex flex-wrap gap-1.5">
@@ -126,7 +149,7 @@ export function PainHistory({
                         <dt className="w-[84px] shrink-0 text-muted">Sesión</dt>
                         <dd className="inline-flex items-center gap-1 text-ink-2">
                           <CalendarDays aria-hidden className="size-3.5 text-muted" />
-                          {linked.replace("Sesión del ", "")}
+                          {linked}
                         </dd>
                       </div>
                     ) : null}
@@ -188,7 +211,7 @@ function IntensityChart({ records }: { records: PainRecordItem[] }) {
           {[0, 5, 10].map((v) => (
             <g key={v}>
               <line x1={PAD.l} x2={W - PAD.r} y1={y(v)} y2={y(v)} stroke="#d2d2da" strokeWidth={1} strokeDasharray={v === 0 ? undefined : "2 4"} />
-              <text x={PAD.l - 8} y={y(v) + 3.5} textAnchor="end" className="fill-subtle text-[10px]">
+              <text x={PAD.l - 8} y={y(v) + 3.5} textAnchor="end" className="fill-muted text-[10px]">
                 {v}
               </text>
             </g>
@@ -213,11 +236,11 @@ function IntensityChart({ records }: { records: PainRecordItem[] }) {
               />
             </g>
           ))}
-          <text x={PAD.l} y={H - 4} className="fill-subtle text-[10px]">
+          <text x={PAD.l} y={H - 4} className="fill-muted text-[10px]">
             {formatDate(recordDay(first), { withYear: false })}
           </text>
           {records.length > 1 ? (
-            <text x={W - PAD.r} y={H - 4} textAnchor="end" className="fill-subtle text-[10px]">
+            <text x={W - PAD.r} y={H - 4} textAnchor="end" className="fill-muted text-[10px]">
               {formatDate(recordDay(last), { withYear: false })}
             </text>
           ) : null}

@@ -11,6 +11,7 @@ import { BodyFigure, type DraftPoint } from "./body-figure";
 import { PainLegend } from "./pain-legend";
 import {
   isActivePain,
+  isStale,
   paintFromStates,
   painStats,
   recordDay,
@@ -30,11 +31,17 @@ type Props = {
   patientId: string;
   /** Todos los registros de dolor del paciente. */
   records: PainRecordItem[];
-  /** Últimas sesiones (para vincular registros). */
+  /** Últimas sesiones realizadas (hasta hoy) que se pueden vincular a un registro. */
   sessions: SessionOption[];
+  /** Sesiones ya vinculadas a registros que no están entre `sessions` (para nombrarlas en el historial). */
+  linkedSessions?: SessionOption[];
+  /** Sesión que se preselecciona al registrar (la de hoy, o la que llegó por ?sesion=). */
+  defaultSessionId?: string | null;
   /** "Hoy" calculado en el servidor (YYYY-MM-DD, AR). */
   today: string;
   actions: BodyMapActions;
+  /** true si el historial se recortó por tamaño (se muestran los registros más recientes). */
+  truncated?: boolean;
 };
 
 const XL_QUERY = "(min-width: 1280px)";
@@ -68,7 +75,16 @@ const FIGURE_HEIGHT =
  * Mapa corporal interactivo del paciente: figura frente/espalda, línea de tiempo, resumen,
  * lista de zonas y panel de registro (lateral en desktop, hoja inferior en mobile).
  */
-export function BodyMap({ patientId, records: serverRecords, sessions, today, actions }: Props) {
+export function BodyMap({
+  patientId,
+  records: serverRecords,
+  sessions,
+  linkedSessions = [],
+  defaultSessionId = null,
+  today,
+  actions,
+  truncated = false,
+}: Props) {
   const titleId = useId();
 
   // Registros locales: se resincronizan cuando el servidor manda datos nuevos (revalidatePath) y
@@ -96,6 +112,7 @@ export function BodyMap({ patientId, records: serverRecords, sessions, today, ac
   const stateList = useMemo(() => [...states.values()], [states]);
   const improving = stateList.filter((s) => isActivePain(s.latest) && s.latest.status === "improving").length;
   const resolvedCount = stateList.filter((s) => !isActivePain(s.latest)).length;
+  const staleCount = asOf ? 0 : stateList.filter((s) => isStale(s.latest, today)).length;
   const lastRecord = sorted[sorted.length - 1];
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -141,6 +158,18 @@ export function BodyMap({ patientId, records: serverRecords, sessions, today, ac
     }
   }, [selectedId]);
 
+  // La hoja (mobile) contiene otros diálogos (editar registro, confirmar borrado) y React propaga sus
+  // eventos cancel/close por el árbol: la hoja solo se cierra si el evento es suyo y no hay otro
+  // diálogo abierto encima.
+  const closeSheet = useCallback(
+    (e?: { target: EventTarget | null; currentTarget: EventTarget | null }) => {
+      if (e && e.target !== e.currentTarget) return;
+      if (document.querySelectorAll("dialog[open]").length > 1) return;
+      close();
+    },
+    [close],
+  );
+
   const onSaved = useCallback((record: PainRecordItem) => {
     setRecords((prev) => [...prev.filter((r) => r.id !== record.id), record]);
     setDraft(null);
@@ -169,7 +198,10 @@ export function BodyMap({ patientId, records: serverRecords, sessions, today, ac
   useEffect(() => {
     if (!selectedId || !isXl) return;
     const el = asideRef.current;
-    if (el && el.getBoundingClientRect().top < 0) el.scrollIntoView({ behavior: "smooth", block: "start" });
+    if (el && el.getBoundingClientRect().top < 0) {
+      const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      el.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "start" });
+    }
   }, [selectedId, isXl]);
 
   // Deslizar horizontalmente sobre la figura cambia de vista (mobile).
@@ -195,6 +227,8 @@ export function BodyMap({ patientId, records: serverRecords, sessions, today, ac
         state: currentStates.get(selectedRegion.id),
         history: selectedHistory,
         sessions,
+        linkedSessions,
+        defaultSessionId,
         today,
         point: draft && draft.region === selectedRegion.id ? ([draft.x, draft.y] as [number, number]) : null,
         onClearPoint: () => setDraft(null),
@@ -207,38 +241,44 @@ export function BodyMap({ patientId, records: serverRecords, sessions, today, ac
 
   return (
     <>
+      {/* Encabezado de la pestaña: título + acciones del mapa (el nombre del paciente ya está arriba). */}
+      <div className="mb-5 flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+        <div className="min-w-0">
+          <h2 id={titleId} className="display text-2xl font-medium text-ink">
+            Mapa corporal
+          </h2>
+          <p className="mt-1 text-sm text-muted">Tocá una zona del cuerpo para registrar o actualizar el dolor.</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <RegionSearch paint={currentPaint} onSelect={selectFromList} className="min-w-0 flex-1 md:w-60 md:flex-none" />
+          <button
+            type="button"
+            aria-pressed={showResolved}
+            onClick={() => setShowResolved((v) => !v)}
+            title={showResolved ? "Ocultar zonas resueltas en la figura" : "Mostrar zonas resueltas en la figura"}
+            className={cn(
+              "inline-flex h-10 shrink-0 items-center gap-2 rounded-full px-3.5 text-[13px] font-medium transition-colors",
+              showResolved ? "bg-ink text-white" : "bg-surface text-ink shadow-inset hover:bg-surface-2",
+            )}
+          >
+            {showResolved ? <Eye aria-hidden className="size-4" /> : <EyeOff aria-hidden className="size-4" />}
+            Resueltos
+          </button>
+        </div>
+      </div>
+
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_400px] xl:items-start">
         {/* ------------------------------------------------------------- Mapa */}
         <section
           aria-labelledby={titleId}
           className="@container/map animate-fade-up rounded-card bg-surface p-5 sm:p-7 xl:sticky xl:top-6"
         >
-          <div className="flex flex-col gap-4 @xl/map:flex-row @xl/map:items-start @xl/map:justify-between">
-            <div className="min-w-0">
-              <h2 id={titleId} className="display text-[26px] font-medium text-ink sm:text-[28px]">
-                Mapa del dolor
-              </h2>
-              <p className="mt-1 text-sm text-muted">Tocá una zona para registrar o actualizar el dolor.</p>
-            </div>
-            <div className="flex items-center gap-2">
-              <RegionSearch paint={currentPaint} onSelect={selectFromList} className="min-w-0 flex-1 @xl/map:w-52 @xl/map:flex-none @3xl/map:w-60" />
-              <button
-                type="button"
-                aria-pressed={showResolved}
-                onClick={() => setShowResolved((v) => !v)}
-                title={showResolved ? "Ocultar zonas resueltas" : "Mostrar zonas resueltas"}
-                className={cn(
-                  "inline-flex h-10 shrink-0 items-center gap-2 rounded-full px-3.5 text-[13px] font-medium transition-colors",
-                  showResolved ? "bg-ink text-white" : "bg-surface-2 text-ink hover:bg-surface-3",
-                )}
-              >
-                {showResolved ? <Eye aria-hidden className="size-4" /> : <EyeOff aria-hidden className="size-4" />}
-                Resueltos
-              </button>
-            </div>
-          </div>
-
-          <div className="mt-5 flex justify-center sm:hidden">
+          {truncated ? (
+            <p className="mb-4 rounded-panel bg-surface-2 px-4 py-2.5 text-[13px] text-muted">
+              El historial es muy largo: el mapa muestra los registros más recientes.
+            </p>
+          ) : null}
+          <div className="flex justify-center sm:hidden">
             <SegmentedControl
               tone="dark"
               aria-label="Vista del cuerpo"
@@ -248,7 +288,7 @@ export function BodyMap({ patientId, records: serverRecords, sessions, today, ac
             />
           </div>
 
-          <div className="@container relative mt-4 sm:mt-6" onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
+          <div className="@container relative mt-4 sm:mt-0" onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
             <div className="pointer-events-none absolute inset-x-0 top-0 z-10 flex justify-center sm:top-9">
               {asOf ? (
                 <p className="inline-flex animate-fade-in items-center gap-1.5 rounded-full bg-ink px-3 py-1.5 text-[13px] font-medium text-white shadow-float">
@@ -268,7 +308,7 @@ export function BodyMap({ patientId, records: serverRecords, sessions, today, ac
                   key={view}
                   className={cn("flex min-w-0 flex-col items-center gap-3", view !== mobileView && "max-sm:hidden")}
                 >
-                  <p className="hidden text-[11px] font-medium tracking-[0.14em] text-subtle uppercase sm:block">
+                  <p className="hidden text-[11px] font-medium tracking-[0.14em] text-muted uppercase sm:block">
                     {VIEW_NAMES[view]}
                   </p>
                   <BodyFigure
@@ -278,6 +318,7 @@ export function BodyMap({ patientId, records: serverRecords, sessions, today, ac
                     draftPoint={draft}
                     showResolved={showResolved}
                     onSelect={onFigureSelect}
+                    today={today}
                     className={cn(FIGURE_HEIGHT, records.length === 0 || asOf ? "max-sm:mt-10" : "max-sm:mt-1")}
                   />
                 </div>
@@ -312,6 +353,7 @@ export function BodyMap({ patientId, records: serverRecords, sessions, today, ac
                 lastUpdate={lastRecord ? relativeDay(recordDay(lastRecord), today) : null}
                 improving={improving}
                 resolved={resolvedCount}
+                stale={staleCount}
               />
               <PainZonesList
                 className="animate-fade-up [animation-delay:60ms]"
@@ -328,7 +370,7 @@ export function BodyMap({ patientId, records: serverRecords, sessions, today, ac
       {/* Hoja inferior (mobile / tablet) */}
       <Dialog
         open={Boolean(panelProps) && !isXl}
-        onClose={close}
+        onClose={closeSheet}
         variant="sheet"
         size="md"
         title={selectedRegion?.label}

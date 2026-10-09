@@ -1,22 +1,24 @@
 "use client";
 
 import { ArrowRight, ChevronDown, MapPin, X } from "lucide-react";
-import { useActionState, useId, useState } from "react";
+import { startTransition, useActionState, useEffect, useId, useMemo, useRef, useState, type FormEvent } from "react";
 import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
 import { ChipGroup } from "@/components/ui/chip";
 import { Field, Input, Select, Textarea } from "@/components/ui/field";
 import { ScaleBar } from "@/components/ui/scale";
 import { SegmentedControl } from "@/components/ui/segmented";
 import { SubmitButton } from "@/components/ui/submit-button";
 import type { BodyRegion } from "@/lib/body-regions";
-import { PAIN_FREQUENCY, PAIN_SCALE_LABELS, PAIN_STATUS, PAIN_TYPES, TECHNIQUES } from "@/lib/constants";
+import { PAIN_FREQUENCY, PAIN_SCALE_LABELS, PAIN_STATUS, PAIN_TYPES } from "@/lib/constants";
 import type { PainStatus } from "@/lib/types";
 import { cn, formatDate } from "@/lib/utils";
+import { actionErrorMessage } from "./action-error";
 import { normalizePoint } from "./geometry";
-import { asPainStatus } from "./pain-state";
+import { PAIN_SCALE_ANCHORS } from "./pain-legend";
+import { asPainStatus, recordDay } from "./pain-state";
+import { sessionOptionLabel } from "./session-label";
 import type { BodyMapActions, PainFormState, PainRecordItem, SessionOption } from "./types";
-
-const TECHNIQUE_LABEL = Object.fromEntries(TECHNIQUES.map((t) => [t.value, t.label]));
 
 const STATUS_OPTIONS = (Object.keys(PAIN_STATUS) as PainStatus[]).map((value) => ({
   value,
@@ -33,53 +35,93 @@ const initialState: PainFormState = { ok: false };
 type Props = {
   patientId: string;
   region: BodyRegion;
-  /** Último registro de la zona (para precargar tipo y frecuencia). */
+  /** Último registro de la zona: al registrar, precarga la caracterización (tipo, frecuencia, irradiación…). */
   latest: PainRecordItem | null;
-  /** Punto exacto marcado en el mapa (coordenadas del viewBox). */
+  /** Modo edición: el registro a corregir (precarga todos sus datos). */
+  record?: PainRecordItem | null;
+  /** Punto exacto marcado en el mapa (coordenadas del viewBox). Solo al registrar. */
   point: [number, number] | null;
   onClearPoint: () => void;
+  /** Sesiones que se pueden vincular (realizadas, hasta hoy). */
   sessions: SessionOption[];
+  /** Sesiones ya vinculadas a algún registro que no están entre `sessions` (para nombrarlas). */
+  linkedSessions?: SessionOption[];
+  /** Sesión preseleccionada al registrar (la de hoy o la que llegó por ?sesion=). */
+  defaultSessionId?: string | null;
   today: string;
+  /** Acción de crear (o de editar, con `record`). */
   action: BodyMapActions["create"];
   onSaved: (record: PainRecordItem) => void;
-  /** En la hoja de mobile no se puede tocar el mapa con el panel abierto. */
+  /** Solo en edición: botón "Cancelar". */
+  onCancel?: () => void;
+  /** En la hoja de mobile (o en un diálogo) no se puede tocar el mapa con el panel abierto. */
   inSheet?: boolean;
 };
 
 /**
- * Formulario "Registrar dolor". Todos los campos son controlados: React 19 resetea los campos no
- * controlados al terminar una acción, y acá no queremos perder lo escrito si hay un error.
+ * Formulario "Registrar dolor" (y "Editar registro"). Todos los campos son controlados y el envío
+ * es manual (onSubmit + startTransition): con <form action> React 19 resetea el formulario al
+ * terminar cada acción y los <select> controlados quedarían mostrando otra opción que la del estado.
  */
 export function PainRecordForm({
   patientId,
   region,
   latest,
+  record = null,
   point,
   onClearPoint,
   sessions,
+  linkedSessions = [],
+  defaultSessionId = null,
   today,
   action,
   onSaved,
+  onCancel,
   inSheet = false,
 }: Props) {
   const uid = useId();
   const fid = (name: string) => `${uid}-${name}`;
+  const formRef = useRef<HTMLFormElement>(null);
+  const editing = record != null;
 
-  const [intensity, setIntensity] = useState<number | null>(null);
-  const [types, setTypes] = useState<string[]>(latest?.pain_types ?? []);
-  const [frequency, setFrequency] = useState<string[]>(latest?.frequency ? [latest.frequency] : []);
+  // Al volver a evaluar una zona con dolor, la caracterización sigue igual salvo que se cambie.
+  const continuing = !editing && latest != null && asPainStatus(latest.status) !== "resolved" ? latest : null;
+  const defaultSession = !editing ? sessions.find((s) => s.id === defaultSessionId) : undefined;
+  const source = record ?? continuing;
+
+  const [intensity, setIntensity] = useState<number | null>(record ? record.intensity : null);
+  const [types, setTypes] = useState<string[]>((record ?? latest)?.pain_types ?? []);
+  const [frequency, setFrequency] = useState<string[]>(() => {
+    const f = (record ?? latest)?.frequency;
+    return f ? [f] : [];
+  });
   const [status, setStatus] = useState<PainStatus>(
-    latest && asPainStatus(latest.status) !== "resolved" ? asPainStatus(latest.status) : "active",
+    record ? asPainStatus(record.status) : continuing ? asPainStatus(continuing.status) : "active",
   );
-  const [startedOn, setStartedOn] = useState(latest && latest.status !== "resolved" ? (latest.started_on ?? "") : "");
-  const [recordedOn, setRecordedOn] = useState(today);
-  const [recordedTouched, setRecordedTouched] = useState(false);
-  const [sessionId, setSessionId] = useState("");
-  const [irradiation, setIrradiation] = useState("");
-  const [aggravating, setAggravating] = useState("");
-  const [relieving, setRelieving] = useState("");
-  const [notes, setNotes] = useState("");
-  const [detailsOpen, setDetailsOpen] = useState(false);
+  const [startedOn, setStartedOn] = useState(source?.started_on ?? "");
+  const [recordedOn, setRecordedOn] = useState(
+    record
+      ? recordDay(record)
+      : defaultSession && defaultSession.session_date <= today
+        ? defaultSession.session_date
+        : today,
+  );
+  const [recordedTouched, setRecordedTouched] = useState(editing);
+  const [sessionId, setSessionId] = useState(record ? (record.session_id ?? "") : (defaultSession?.id ?? ""));
+  const [irradiation, setIrradiation] = useState(source?.irradiation ?? "");
+  const [aggravating, setAggravating] = useState(source?.aggravating_factors ?? "");
+  const [relieving, setRelieving] = useState(source?.relieving_factors ?? "");
+  const [notes, setNotes] = useState(record?.notes ?? "");
+  const [detailsOpen, setDetailsOpen] = useState(Boolean(record?.notes));
+  const [keepPoint, setKeepPoint] = useState(record?.point_x != null && record?.point_y != null);
+
+  // Opciones del selector: en edición se conserva la sesión ya vinculada aunque no esté entre las últimas.
+  const sessionOptions = useMemo(() => {
+    const linkedId = record?.session_id;
+    if (!linkedId || sessions.some((s) => s.id === linkedId)) return sessions;
+    const linked = linkedSessions.find((s) => s.id === linkedId);
+    return [...sessions, linked ?? { id: linkedId, session_date: "", techniques: [] }];
+  }, [sessions, linkedSessions, record?.session_id]);
 
   const [state, formAction, isPending] = useActionState<PainFormState, FormData>(async (prev, formData) => {
     if (formData.get("intensity") === "" || formData.get("intensity") == null) {
@@ -88,7 +130,7 @@ export function PainRecordForm({
     try {
       const res = await action(prev, formData);
       if (res.ok && res.data?.record) {
-        toast.success(res.message ?? "Registro guardado");
+        toast.success(res.message ?? (editing ? "Registro actualizado" : "Registro guardado"));
         onSaved(res.data.record);
       } else {
         toast.error(res.message ?? "Revisá los datos marcados.");
@@ -96,54 +138,106 @@ export function PainRecordForm({
         if (fe.irradiation || fe.aggravating_factors || fe.relieving_factors || fe.notes) setDetailsOpen(true);
       }
       return res;
-    } catch {
-      toast.error("No pudimos guardar el registro. Revisá tu conexión e intentá de nuevo.");
-      return { ok: false, message: "No pudimos guardar el registro." };
+    } catch (error) {
+      const message = actionErrorMessage(error, "No pudimos guardar el registro. Revisá tu conexión e intentá de nuevo.");
+      toast.error(message);
+      return { ok: false, message };
     }
   }, initialState);
 
+  const onSubmit = (e: FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    if (isPending) return;
+    const formData = new FormData(e.currentTarget);
+    startTransition(() => formAction(formData));
+  };
+
+  // Tras un error de validación, el foco va al primer campo marcado (el mensaje queda asociado).
+  useEffect(() => {
+    if (state.ok || !state.fieldErrors) return;
+    const form = formRef.current;
+    if (!form) return;
+    const target = state.fieldErrors.intensity
+      ? form.querySelector<HTMLElement>('[data-field="intensity"] [role="radio"]')
+      : form.querySelector<HTMLElement>('[aria-invalid="true"]');
+    target?.focus();
+  }, [state]);
+
   const errors = state.fieldErrors ?? {};
-  const normalized = point ? normalizePoint(point[0], point[1]) : null;
+  const normalized = editing ? null : point ? normalizePoint(point[0], point[1]) : null;
   const detailCount = [irradiation, aggravating, relieving, notes].filter((v) => v.trim()).length;
+  const carriedDetails =
+    continuing != null &&
+    detailCount > 0 &&
+    !notes.trim() &&
+    irradiation === (continuing.irradiation ?? "") &&
+    aggravating === (continuing.aggravating_factors ?? "") &&
+    relieving === (continuing.relieving_factors ?? "");
+  const selectedSession = sessionOptions.find((s) => s.id === sessionId);
+  const sessionHint = !sessionOptions.length
+    ? "Todavía no hay sesiones realizadas para vincular."
+    : !editing && defaultSession && sessionId === defaultSession.id
+      ? defaultSession.session_date === today
+        ? "Preseleccionamos la sesión de hoy."
+        : `Preseleccionamos la sesión del ${formatDate(defaultSession.session_date)}.`
+      : undefined;
+  const intensityMsgId = fid("intensity-msg");
 
   return (
-    <form action={formAction} noValidate className="flex flex-col" aria-label={`Registrar dolor en ${region.label}`}>
+    <form
+      ref={formRef}
+      onSubmit={onSubmit}
+      noValidate
+      className="flex flex-col"
+      aria-label={editing ? `Editar registro de dolor en ${region.label}` : `Registrar dolor en ${region.label}`}
+    >
       <input type="hidden" name="patient_id" value={patientId} />
       <input type="hidden" name="region" value={region.id} />
       <input type="hidden" name="view" value={region.view} />
+      {record ? <input type="hidden" name="record_id" value={record.id} /> : null}
       {normalized ? (
         <>
           <input type="hidden" name="point_x" value={normalized.x} />
           <input type="hidden" name="point_y" value={normalized.y} />
         </>
       ) : null}
+      {record && keepPoint && record.point_x != null && record.point_y != null ? (
+        <>
+          <input type="hidden" name="point_x" value={record.point_x} />
+          <input type="hidden" name="point_y" value={record.point_y} />
+        </>
+      ) : null}
 
       <div className="space-y-6">
-        <div>
+        <div role="group" aria-labelledby={fid("intensity-label")} aria-describedby={intensityMsgId} data-field="intensity">
+          <span id={fid("intensity-label")} className="sr-only">
+            Intensidad del dolor, EVA de 0 a 10: 0 es sin dolor y 10, el peor dolor imaginable
+          </span>
           <ScaleBar
             tone="pain"
             min={0}
             max={10}
             name="intensity"
-            label="Intensidad"
-            description="EVA · 0 sin dolor, 10 el peor imaginable"
+            label="Intensidad del dolor"
+            description={`EVA (0–10) · ${PAIN_SCALE_ANCHORS}`}
             value={intensity}
             onChange={(v) => {
               setIntensity(v);
               if (v === 0 && status !== "resolved") setStatus("resolved");
+              if (v != null && v > 0 && status === "resolved") setStatus("active");
             }}
             allowEmpty={false}
           />
           {errors.intensity ? (
-            <p role="alert" className="mt-2 px-1 text-[13px] text-danger">
+            <p id={intensityMsgId} role="alert" className="mt-2 px-1 text-[13px] text-danger">
               {errors.intensity}
             </p>
           ) : (
-            <p className="mt-2 px-1 text-[13px] text-muted" aria-live="polite">
+            <p id={intensityMsgId} className="mt-2 px-1 text-[13px] text-muted" aria-live="polite">
               {intensity != null
                 ? `${PAIN_SCALE_LABELS[intensity]}`
                 : latest
-                  ? `Último registro: ${latest.intensity}/10 (${formatDate(latest.recorded_at)})`
+                  ? `Último registro: EVA ${latest.intensity}/10 (${formatDate(recordDay(latest))})`
                   : "Tocá un valor de la escala."}
             </p>
           )}
@@ -193,7 +287,7 @@ export function PainRecordForm({
               id={fid("started")}
               type="date"
               name="started_on"
-              max={today}
+              max={recordedOn || today}
               value={startedOn}
               onChange={(e) => setStartedOn(e.target.value)}
               aria-invalid={Boolean(errors.started_on)}
@@ -216,54 +310,57 @@ export function PainRecordForm({
           </Field>
         </div>
 
-        <Field
-          label="Vincular a sesión"
-          htmlFor={fid("session")}
-          optional
-          error={errors.session_id}
-          hint={sessions.length ? undefined : "Todavía no hay sesiones cargadas para este paciente."}
-        >
+        <Field label="Vincular a sesión" htmlFor={fid("session")} optional error={errors.session_id} hint={sessionHint}>
           <Select
             id={fid("session")}
             name="session_id"
             value={sessionId}
-            disabled={!sessions.length}
+            disabled={!sessionOptions.length}
             onChange={(e) => {
               const id = e.target.value;
               setSessionId(id);
-              const s = sessions.find((x) => x.id === id);
-              if (s && !recordedTouched && s.session_date <= today) setRecordedOn(s.session_date);
+              const s = sessionOptions.find((x) => x.id === id);
+              if (s?.session_date && !recordedTouched && s.session_date <= today) setRecordedOn(s.session_date);
               if (!s && !recordedTouched) setRecordedOn(today);
             }}
             aria-invalid={Boolean(errors.session_id)}
           >
             <option value="">Sin vincular</option>
-            {sessions.map((s) => (
+            {sessionOptions.map((s) => (
               <option key={s.id} value={s.id}>
-                {formatDate(s.session_date)}
-                {s.techniques.length
-                  ? ` · ${s.techniques
-                      .slice(0, 2)
-                      .map((t) => TECHNIQUE_LABEL[t] ?? t)
-                      .join(", ")}${s.techniques.length > 2 ? "…" : ""}`
-                  : ""}
+                {sessionOptionLabel(s, today)}
               </option>
             ))}
           </Select>
         </Field>
+        {selectedSession?.session_date && recordedOn && selectedSession.session_date !== recordedOn ? (
+          <p className="-mt-4 px-1 text-[13px] text-muted">
+            La fecha del registro ({formatDate(recordedOn)}) no coincide con la de la sesión.
+          </p>
+        ) : null}
 
         {/* Punto exacto */}
         <div className="flex items-center gap-3 rounded-panel bg-surface-2 px-4 py-3">
           <span
             className={cn(
               "inline-flex size-9 shrink-0 items-center justify-center rounded-full",
-              point ? "bg-ink text-white" : "bg-surface text-muted",
+              point || (editing && keepPoint) ? "bg-ink text-white" : "bg-surface text-muted",
             )}
           >
             <MapPin aria-hidden className="size-4" />
           </span>
           <p className="min-w-0 flex-1 text-[13px] text-muted">
-            {point ? (
+            {editing ? (
+              keepPoint ? (
+                <>
+                  <span className="font-medium text-ink">Punto exacto marcado.</span> Se conserva al guardar.
+                </>
+              ) : record?.point_x != null ? (
+                "El punto exacto se quita al guardar."
+              ) : (
+                "Este registro no tiene punto exacto."
+              )
+            ) : point ? (
               <>
                 <span className="font-medium text-ink">Punto exacto marcado.</span> Se guarda junto al registro.
               </>
@@ -273,14 +370,22 @@ export function PainRecordForm({
               "Opcional: tocá la zona en el mapa para marcar el punto exacto del dolor."
             )}
           </p>
-          {point ? (
+          {(editing ? keepPoint : point) ? (
             <button
               type="button"
-              onClick={onClearPoint}
-              className="inline-flex h-9 shrink-0 items-center gap-1 rounded-full px-3 text-[13px] font-medium text-ink hover:bg-surface-3"
+              onClick={editing ? () => setKeepPoint(false) : onClearPoint}
+              className="inline-flex h-10 shrink-0 items-center gap-1 rounded-full px-3 text-[13px] font-medium text-ink hover:bg-surface-3"
             >
               <X aria-hidden className="size-3.5" />
               Quitar
+            </button>
+          ) : editing && record?.point_x != null ? (
+            <button
+              type="button"
+              onClick={() => setKeepPoint(true)}
+              className="inline-flex h-10 shrink-0 items-center rounded-full px-3 text-[13px] font-medium text-ink hover:bg-surface-3"
+            >
+              Deshacer
             </button>
           ) : null}
         </div>
@@ -297,12 +402,17 @@ export function PainRecordForm({
             <span>
               Más detalles
               <span className="ml-1.5 font-normal text-muted">
-                {detailCount ? `· ${detailCount} completado${detailCount === 1 ? "" : "s"}` : "· irradiación, agravantes, notas"}
+                {detailCount
+                  ? `· ${detailCount} completado${detailCount === 1 ? "" : "s"}${carriedDetails ? " (del último registro)" : ""}`
+                  : "· irradiación, agravantes, notas"}
               </span>
             </span>
             <ChevronDown aria-hidden className={cn("size-4 shrink-0 transition-transform", detailsOpen && "rotate-180")} />
           </button>
           <div id={fid("details")} hidden={!detailsOpen} className="space-y-4 px-4 pt-1 pb-4">
+            {carriedDetails ? (
+              <p className="text-[13px] text-muted">Copiamos la irradiación y los factores del último registro: editalos si cambiaron.</p>
+            ) : null}
             <Field label="Irradiación" htmlFor={fid("irr")} optional error={errors.irradiation}>
               <Input
                 id={fid("irr")}
@@ -354,7 +464,7 @@ export function PainRecordForm({
         </div>
 
         {state.message && !state.ok && !Object.keys(errors).length ? (
-          <p role="alert" className="rounded-panel bg-danger-50 px-4 py-3 text-sm text-danger">
+          <p role="alert" className="rounded-panel bg-danger-50 px-4 py-3 text-sm text-danger-ink">
             {state.message}
           </p>
         ) : null}
@@ -367,18 +477,29 @@ export function PainRecordForm({
           inSheet ? "-bottom-5 border-t border-line" : "-mb-6 rounded-b-card sm:-mb-7",
         )}
       >
-        <p className="min-w-0 text-[13px] text-muted">
-          {intensity == null ? "Elegí la intensidad para guardar." : "Se suma al historial de la zona."}
+        <p className={cn("min-w-0 text-[13px] text-muted", editing && "max-sm:sr-only")}>
+          {intensity == null
+            ? "Elegí la intensidad para guardar."
+            : editing
+              ? "El cambio queda registrado en la auditoría clínica."
+              : "Se suma al historial de la zona."}
         </p>
-        <SubmitButton
-          pending={isPending}
-          pendingLabel="Guardando…"
-          variant="inverse"
-          className="shadow-soft"
-          iconRight={<ArrowRight />}
-        >
-          Guardar
-        </SubmitButton>
+        <div className="ml-auto flex shrink-0 items-center gap-2">
+          {editing && onCancel ? (
+            <Button variant="ghost" onClick={onCancel} disabled={isPending}>
+              Cancelar
+            </Button>
+          ) : null}
+          <SubmitButton
+            pending={isPending}
+            pendingLabel="Guardando…"
+            variant="inverse"
+            className="shadow-soft"
+            iconRight={<ArrowRight />}
+          >
+            {editing ? "Guardar cambios" : "Guardar"}
+          </SubmitButton>
+        </div>
       </div>
     </form>
   );

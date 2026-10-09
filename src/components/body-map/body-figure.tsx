@@ -1,13 +1,14 @@
 "use client";
 
-import { memo, useId, useState, type KeyboardEvent, type MouseEvent, type PointerEvent } from "react";
+import { memo, useId, useRef, useState, type KeyboardEvent, type MouseEvent, type PointerEvent } from "react";
 import { getRegion } from "@/lib/body-regions";
 import { PAIN_STATUS } from "@/lib/constants";
 import type { BodyView } from "@/lib/types";
 import { cn, painColor, painTextColor } from "@/lib/utils";
-import { FIGURE, isPainful, isResolved, regionAriaLabel, regionFill } from "./figure-style";
+import { NAV_KEYS, nextRegion, readingOrder, type NavKey } from "./figure-nav";
+import { FIGURE, isPainful, isResolved, painEdge, regionAriaLabel, regionFill } from "./figure-style";
 import { BODY_GEOMETRY, VIEWBOX_HEIGHT, VIEWBOX_WIDTH, getRegionShape, toPercent } from "./geometry";
-import { asPainStatus } from "./pain-state";
+import { asPainStatus, relativeDay } from "./pain-state";
 import type { RegionPaint } from "./types";
 
 export type DraftPoint = { region: string; x: number; y: number };
@@ -22,14 +23,30 @@ type Props = {
   onSelect: (regionId: string, point: [number, number] | null) => void;
   /** Etiquetas "Der." / "Izq." a los costados. */
   sideLabels?: boolean;
+  /** "Hoy" (YYYY-MM-DD, AR): para decir qué tan reciente es cada registro. */
+  today?: string;
   className?: string;
 };
 
 const VIEW_NAMES: Record<BodyView, string> = { front: "Vista de frente", back: "Vista de espalda" };
 
+/** Primera zona de cada vista en orden de lectura (parada de Tab por defecto). */
+const FIRST_REGION: Record<BodyView, string> = {
+  front: readingOrder(BODY_GEOMETRY.front.regions)[0].id,
+  back: readingOrder(BODY_GEOMETRY.back.regions)[0].id,
+};
+const VIEW_IDS: Record<BodyView, Set<string>> = {
+  front: new Set(BODY_GEOMETRY.front.regions.map((r) => r.id)),
+  back: new Set(BODY_GEOMETRY.back.regions.map((r) => r.id)),
+};
+
 /**
  * Figura interactiva (una vista). Cada zona es un botón accesible del SVG; el tooltip y las
  * etiquetas son HTML superpuesto con el mismo aspect ratio que el viewBox.
+ *
+ * Teclado (roving tabindex): la figura es UNA parada de Tab (la zona elegida, la última enfocada o
+ * la cabeza); las flechas mueven el foco a la zona vecina en esa dirección, Inicio/Fin van a la
+ * primera/última zona y Enter o Espacio la eligen.
  */
 export const BodyFigure = memo(function BodyFigure({
   view,
@@ -39,12 +56,23 @@ export const BodyFigure = memo(function BodyFigure({
   showResolved,
   onSelect,
   sideLabels = true,
+  today,
   className,
 }: Props) {
   const uid = useId().replace(/[^a-zA-Z0-9]/g, "");
   const geometry = BODY_GEOMETRY[view];
+  const svgRef = useRef<SVGSVGElement>(null);
   const [hovered, setHovered] = useState<string | null>(null);
   const [focused, setFocused] = useState<{ id: string; visible: boolean } | null>(null);
+  const [roving, setRoving] = useState<string | null>(null);
+  const inView = (id: string | null): id is string => Boolean(id && VIEW_IDS[view].has(id));
+  // Al elegir una zona (desde la lista o el buscador), esa pasa a ser la parada de Tab de su figura.
+  const [prevSelected, setPrevSelected] = useState(selectedId);
+  if (selectedId !== prevSelected) {
+    setPrevSelected(selectedId);
+    if (inView(selectedId)) setRoving(selectedId);
+  }
+  const tabStop = inView(roving) ? roving : inView(selectedId) ? selectedId : FIRST_REGION[view];
 
   const pointFromEvent = (e: MouseEvent<SVGElement>): [number, number] | null => {
     const svg = (e.currentTarget as SVGGraphicsElement).ownerSVGElement;
@@ -67,7 +95,14 @@ export const BodyFigure = memo(function BodyFigure({
     if (e.key === "Enter" || e.key === " ") {
       e.preventDefault();
       onSelect(id, null);
+      return;
     }
+    if (!NAV_KEYS.includes(e.key) || e.altKey || e.ctrlKey || e.metaKey) return;
+    e.preventDefault();
+    const next = nextRegion(geometry.regions, id, e.key as NavKey);
+    if (!next || next === id) return;
+    setRoving(next);
+    svgRef.current?.querySelector<SVGPathElement>(`path[data-region="${next}"]`)?.focus();
   };
 
   const tooltipId = hovered ?? (focused?.visible ? focused.id : null);
@@ -88,10 +123,15 @@ export const BodyFigure = memo(function BodyFigure({
       className={cn("relative select-none", className)}
       style={{ aspectRatio: `${VIEWBOX_WIDTH} / ${VIEWBOX_HEIGHT}` }}
     >
+      <p id={`${uid}-help`} className="sr-only">
+        Usá las flechas para moverte entre las zonas y Enter para elegir una.
+      </p>
       <svg
+        ref={svgRef}
         viewBox={geometry.viewBox}
         role="group"
         aria-label={VIEW_NAMES[view]}
+        aria-describedby={`${uid}-help`}
         className="absolute inset-0 h-full w-full overflow-visible"
         style={{ WebkitTapHighlightColor: "transparent" }}
       >
@@ -127,9 +167,9 @@ export const BodyFigure = memo(function BodyFigure({
                 d={r.d}
                 data-region={r.id}
                 role="button"
-                tabIndex={0}
+                tabIndex={r.id === tabStop ? 0 : -1}
                 aria-pressed={selectedId === r.id}
-                aria-label={regionAriaLabel(r.id, paint[r.id])}
+                aria-label={regionAriaLabel(r.id, paint[r.id], today)}
                 fill={regionFill(p, showResolved)}
                 stroke={FIGURE.gap}
                 strokeWidth={1.6}
@@ -138,7 +178,10 @@ export const BodyFigure = memo(function BodyFigure({
                 className="cursor-pointer outline-none transition-[fill,filter] duration-200 hover:brightness-[0.94]"
                 {...handlers(r.id)}
                 onKeyDown={onKeyDown(r.id)}
-                onFocus={(e) => setFocused({ id: r.id, visible: e.currentTarget.matches(":focus-visible") })}
+                onFocus={(e) => {
+                  setRoving(r.id);
+                  setFocused({ id: r.id, visible: e.currentTarget.matches(":focus-visible") });
+                }}
                 onBlur={() => setFocused((f) => (f?.id === r.id ? null : f))}
               />
             );
@@ -184,8 +227,14 @@ export const BodyFigure = memo(function BodyFigure({
             ))}
         </g>
 
-        {/* Contornos: resueltos, seleccionada, foco */}
+        {/* Contornos: dolor (borde oscuro del mismo tono), resueltos, seleccionada, foco */}
         <g pointerEvents="none" aria-hidden fill="none" strokeLinejoin="round">
+          {geometry.regions.map((r) => {
+            const p = visiblePaint(r.id);
+            return isPainful(p) ? (
+              <path key={r.id} d={r.d} stroke={painEdge(p.intensity)} strokeWidth={1.5} vectorEffect="non-scaling-stroke" />
+            ) : null;
+          })}
           {showResolved
             ? geometry.regions.map((r) =>
                 isResolved(paint[r.id]) ? (
@@ -274,13 +323,13 @@ export const BodyFigure = memo(function BodyFigure({
         <>
           <span
             aria-hidden
-            className="pointer-events-none absolute top-[15.5%] left-0 text-[11px] font-medium tracking-wide text-subtle"
+            className="pointer-events-none absolute top-[15.5%] left-0 text-[11px] font-medium tracking-wide text-ink-2"
           >
             {leftLabel}
           </span>
           <span
             aria-hidden
-            className="pointer-events-none absolute top-[15.5%] right-0 text-[11px] font-medium tracking-wide text-subtle"
+            className="pointer-events-none absolute top-[15.5%] right-0 text-[11px] font-medium tracking-wide text-ink-2"
           >
             {rightLabel}
           </span>
@@ -303,10 +352,13 @@ export const BodyFigure = memo(function BodyFigure({
                 {tooltipPaint.intensity}
               </span>
             ) : tooltipPaint && isResolved(tooltipPaint) ? (
-              <span className="pr-1 text-[11px] text-white/60">{PAIN_STATUS.resolved.label}</span>
+              <span className="pr-1 text-[11px] text-white/70">{PAIN_STATUS.resolved.label}</span>
             ) : (
-              <span className="pr-1 text-[11px] text-white/55">Sin dolor</span>
+              <span className="pr-1 text-[11px] text-white/70">Sin dolor</span>
             )}
+            {tooltipPaint?.day && today ? (
+              <span className="pr-1 text-[11px] text-white/70">{relativeDay(tooltipPaint.day, today)}</span>
+            ) : null}
           </div>
         </div>
       ) : null}

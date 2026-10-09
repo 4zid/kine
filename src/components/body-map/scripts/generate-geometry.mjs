@@ -2,10 +2,11 @@
 //
 //   node src/components/body-map/scripts/generate-geometry.mjs
 //
-// Requiere Node >= 22.18 (type stripping nativo). Además de escribir el archivo verifica que:
+// Requiere Node >= 22.18 (type stripping nativo). Escribe geometry.data.ts y las siluetas neutras
+// estáticas de BodyMapPreview (assets/neutral-{front,back}.svg). Además verifica que:
 //   - cada zona de src/lib/body-regions.ts tenga exactamente UNA forma en su vista (ni faltantes ni sobrantes);
 //   - las zonas teselen la silueta (suma de áreas ≈ área de la silueta: sin huecos ni superposiciones).
-import { writeFileSync } from "node:fs";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
@@ -105,3 +106,17 @@ ${back.map(line).join("\n")}
 
 writeFileSync(out, file);
 console.log(`\nEscrito ${out}`);
+
+// Siluetas neutras para BodyMapPreview: se sirven como archivo estático (cacheable) y solo las zonas
+// con dolor van en línea. Colores = FIGURE.neutral / FIGURE.gap de figure-style.ts.
+const assets = join(here, "..", "assets");
+mkdirSync(assets, { recursive: true });
+for (const [view, shapes] of [
+  ["front", front],
+  ["back", back],
+]) {
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${VIEWBOX_WIDTH} ${VIEWBOX_HEIGHT}" width="${VIEWBOX_WIDTH}" height="${VIEWBOX_HEIGHT}"><style>path{vector-effect:non-scaling-stroke}</style><g fill="#E2E2E9" stroke="#FFFFFF" stroke-width="1.2" stroke-linejoin="round">${shapes.map((s) => `<path d="${s.d}"/>`).join("")}</g></svg>\n`;
+  const file = join(assets, `neutral-${view}.svg`);
+  writeFileSync(file, svg);
+  console.log(`Escrito ${file}`);
+}

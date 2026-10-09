@@ -1,14 +1,24 @@
 "use client";
 
-import { ChevronDown, Minus, MousePointerClick, TrendingDown, TrendingUp } from "lucide-react";
-import { useState } from "react";
+import { ChevronDown, Clock, Minus, MousePointerClick, TrendingDown, TrendingUp } from "lucide-react";
+import { useId, useState } from "react";
 import { PainBadge } from "@/components/ui/badge";
 import { getRegion, REGION_GROUPS } from "@/lib/body-regions";
 import { PAIN_STATUS } from "@/lib/constants";
 import { cn } from "@/lib/utils";
-import { asPainStatus, isActivePain, recordDay, relativeDay, trendOf, type RegionState } from "./pain-state";
+import {
+  asPainStatus,
+  daysAgo,
+  isActivePain,
+  isStale,
+  NEW_ZONE_DAYS,
+  recordDay,
+  relativeDay,
+  trendOf,
+  type RegionState,
+} from "./pain-state";
 
-/** Lista "Zonas con dolor": ordenada por intensidad, con tendencia y fecha relativa. */
+/** Lista "Zonas con dolor": ordenada por intensidad, con tendencia y qué tan reciente es cada dato. */
 export function PainZonesList({
   states,
   selectedId,
@@ -22,6 +32,7 @@ export function PainZonesList({
   today: string;
   className?: string;
 }) {
+  const titleId = useId();
   const [showResolved, setShowResolved] = useState(false);
   const active = states
     .filter((s) => isActivePain(s.latest))
@@ -35,18 +46,19 @@ export function PainZonesList({
     .sort((a, b) => new Date(b.latest.recorded_at).getTime() - new Date(a.latest.recorded_at).getTime());
 
   return (
-    <section aria-labelledby="zones-title" className={cn("rounded-card bg-surface p-5 sm:p-6", className)}>
+    <section aria-labelledby={titleId} className={cn("rounded-card bg-surface p-5 sm:p-6", className)}>
       <div className="mb-3 flex items-start justify-between gap-3 px-1">
         <div>
-          <h2 id="zones-title" className="display text-[22px] font-medium text-ink">
+          <h3 id={titleId} className="display text-[22px] font-medium text-ink">
             Zonas con dolor
-          </h2>
+          </h3>
           <p className="mt-1 text-sm text-muted">
             {active.length ? "Ordenadas por intensidad. Tocá una para verla." : "Todavía no hay dolor activo."}
           </p>
         </div>
         {active.length ? (
           <span className="tabular inline-flex h-8 min-w-8 items-center justify-center rounded-full bg-surface-2 px-3 text-sm font-semibold text-ink">
+            <span className="sr-only">Zonas activas: </span>
             {active.length}
           </span>
         ) : null}
@@ -111,6 +123,7 @@ function ZoneRow({
   const r = state.latest;
   const status = asPainStatus(r.status);
   const resolved = !isActivePain(r);
+  const stale = isStale(r, today);
   return (
     <li>
       <button
@@ -125,7 +138,7 @@ function ZoneRow({
         {resolved ? (
           <span
             aria-hidden
-            className="inline-flex size-9 shrink-0 items-center justify-center rounded-full bg-success-50 text-xs font-semibold text-success"
+            className="inline-flex size-9 shrink-0 items-center justify-center rounded-full bg-success-50 text-xs font-semibold text-success-ink"
           >
             0
           </span>
@@ -137,20 +150,27 @@ function ZoneRow({
           <span className="mt-0.5 flex items-center gap-1.5 text-[13px] text-muted">
             <span aria-hidden className="size-1.5 shrink-0 rounded-full" style={{ backgroundColor: PAIN_STATUS[status].color }} />
             <span className="truncate">
-              {`${PAIN_STATUS[status].label} · ${relativeDay(recordDay(r), today)}`}
+              {PAIN_STATUS[status].label} ·{" "}
+              <span className={cn(stale && "font-medium text-warning-ink")}>
+                {stale ? <Clock aria-hidden className="mr-0.5 inline size-3.5 -translate-y-px" /> : null}
+                actualizado {relativeDay(recordDay(r), today)}
+                {stale ? <span className="sr-only"> (dato viejo: conviene volver a evaluarla)</span> : null}
+              </span>
             </span>
           </span>
         </span>
-        {!resolved ? <Trend state={state} /> : null}
+        {!resolved ? <Trend state={state} today={today} /> : null}
         <span className="sr-only">{region ? REGION_GROUPS[region.group] : ""}</span>
       </button>
     </li>
   );
 }
 
-function Trend({ state }: { state: RegionState }) {
+function Trend({ state, today }: { state: RegionState; today: string }) {
   const t = trendOf(state);
   if (t === "new") {
+    // Primer registro de la zona: "Nuevo" solo si es reciente (si no, contradice "hace 2 meses").
+    if (daysAgo(recordDay(state.latest), today) > NEW_ZONE_DAYS) return null;
     return <span className="shrink-0 rounded-full bg-accent-100 px-2 py-0.5 text-[11px] font-medium text-accent-700">Nuevo</span>;
   }
   const diff = state.latest.intensity - (state.previous?.intensity ?? state.latest.intensity);
@@ -160,9 +180,9 @@ function Trend({ state }: { state: RegionState }) {
       title={label}
       className={cn(
         "tabular inline-flex shrink-0 items-center gap-0.5 text-[13px] font-medium",
-        t === "down" && "text-success",
-        t === "up" && "text-danger",
-        t === "same" && "text-subtle",
+        t === "down" && "text-success-ink",
+        t === "up" && "text-danger-ink",
+        t === "same" && "text-muted",
       )}
     >
       <span className="sr-only">{label}</span>
