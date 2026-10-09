@@ -76,7 +76,7 @@ export type ClinicalAlert = {
 };
 
 /** Marcas de un antecedente: `alert` (contraindicación) y, si el catálogo la define, `precaution`. */
-type ConditionFlags = { alert?: boolean; precaution?: boolean };
+type ConditionFlags = { alert?: boolean; precaution?: boolean; severity?: "contraindication" | "precaution" };
 
 /**
  * Alertas clínicas relevantes para contraindicaciones: antecedentes con `alert`, después los que
@@ -90,8 +90,9 @@ export function clinicalAlerts(history: Pick<ClinicalHistory, "conditions" | "al
     const condition = CONDITIONS.find((c) => c.value === value);
     if (!condition) continue;
     const flags = condition as ConditionFlags;
-    if (flags.alert) alerts.push({ key: condition.value, label: condition.label, tone: "alert" });
-    else if (flags.precaution) precautions.push({ key: condition.value, label: condition.label, tone: "precaution" });
+    const isPrecaution = flags.precaution === true || flags.severity === "precaution";
+    if (flags.alert && !isPrecaution) alerts.push({ key: condition.value, label: condition.label, tone: "alert" });
+    else if (isPrecaution) precautions.push({ key: condition.value, label: condition.label, tone: "precaution" });
   }
   alerts.push(...precautions);
   const allergies = history.allergies?.trim();

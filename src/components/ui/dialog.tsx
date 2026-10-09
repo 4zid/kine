@@ -126,6 +126,9 @@ export function Dialog({
       aria-label={title ? undefined : ariaLabel}
       aria-describedby={description ? descId : undefined}
       onClose={(e) => {
+        // React propaga close/cancel de un <dialog> anidado (p. ej. un ConfirmDialog dentro de
+        // otro Dialog) a los handlers del padre: ignorar los que no son de este diálogo.
+        if (e.target !== e.currentTarget) return;
         // Solo cierres nativos (p. ej. Esc repetido sin activación del usuario): sincronizar el estado.
         const el = e.currentTarget;
         if (el.dataset[PROGRAMMATIC_CLOSE]) {
@@ -135,6 +138,7 @@ export function Dialog({
         if (!el.open) onClose();
       }}
       onCancel={(e) => {
+        if (e.target !== e.currentTarget) return;
         e.preventDefault();
         onClose();
       }}

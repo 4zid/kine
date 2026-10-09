@@ -59,6 +59,10 @@
   --color-warning-50: #fdf5e4;
   --color-success: #1f7a45;
   --color-success-50: #e8f6ee;
+  /* Variantes "ink" para texto de estado sobre fondos claros o tintes -50 (≥ 7:1 sobre blanco). */
+  --color-danger-ink: #9a2a21;
+  --color-warning-ink: #6f470c;
+  --color-success-ink: #17623a;
 
   /* Radios */
   --radius-card: 1.75rem;
