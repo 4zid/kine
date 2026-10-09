@@ -1,34 +1,18 @@
 "use client";
 
-import { Eye, EyeOff, KeyRound, LogOut, Mail, ShieldCheck } from "lucide-react";
-import { useActionState, useId, useState } from "react";
+import { Eye, EyeOff, FileText, KeyRound, LogOut, Mail, ShieldCheck } from "lucide-react";
+import { startTransition, useActionState, useId, useState, type FormEvent } from "react";
 import { toast } from "sonner";
+import { actionFailure } from "@/components/auth/action-guard";
+import { CONTACT_EMAIL } from "@/components/auth/legal-contact";
+import { passwordStrength } from "@/components/auth/password-rules";
 import { Field, Input } from "@/components/ui/field";
 import { SubmitButton } from "@/components/ui/submit-button";
 import { signOut } from "@/lib/actions/session";
 import { initialActionState, type ActionState } from "@/lib/types";
-import { cn } from "@/lib/utils";
 import { PASSWORD_MAX, PASSWORD_MIN } from "@/components/settings/limits";
 import { SettingsSection } from "@/components/settings/settings-section";
 import type { FormAction } from "@/components/settings/use-settings-form";
-
-const STRENGTH = [
-  { label: "Muy débil", color: "bg-danger" },
-  { label: "Débil", color: "bg-orange" },
-  { label: "Aceptable", color: "bg-yellow" },
-  { label: "Buena", color: "bg-green" },
-  { label: "Muy buena", color: "bg-brand" },
-] as const;
-
-function strengthOf(pw: string): number {
-  if (!pw) return 0;
-  let score = 0;
-  if (pw.length >= PASSWORD_MIN) score++;
-  if (pw.length >= 12) score++;
-  if (/[a-z]/.test(pw) && /[A-Z]/.test(pw)) score++;
-  if (/\d/.test(pw) && /[^A-Za-z0-9]/.test(pw)) score++;
-  return pw.length < PASSWORD_MIN ? 0 : Math.min(score, 4);
-}
 
 function PasswordInput({
   id,
@@ -39,6 +23,7 @@ function PasswordInput({
   autoComplete,
   invalid,
   describedBy,
+  minLength,
 }: {
   id: string;
   name: string;
@@ -48,6 +33,7 @@ function PasswordInput({
   autoComplete: string;
   invalid?: boolean;
   describedBy?: string;
+  minLength?: number;
 }) {
   return (
     <Input
@@ -57,7 +43,7 @@ function PasswordInput({
       autoComplete={autoComplete}
       autoCapitalize="none"
       spellCheck={false}
-      minLength={PASSWORD_MIN}
+      minLength={minLength}
       maxLength={PASSWORD_MAX}
       value={value}
       onChange={(e) => onChange(e.target.value)}
@@ -68,7 +54,12 @@ function PasswordInput({
   );
 }
 
+/**
+ * Cambio de contraseña: pide la actual (una sesión abierta sola no alcanza) y, al
+ * guardar, el servidor cierra las sesiones de los demás dispositivos.
+ */
 function PasswordForm({ action }: { action: FormAction }) {
+  const [current, setCurrent] = useState("");
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [visible, setVisible] = useState(false);
@@ -76,46 +67,89 @@ function PasswordForm({ action }: { action: FormAction }) {
   const strengthId = useId();
 
   const [, formAction, pending] = useActionState<ActionState, FormData>(async (prev, formData) => {
-    const result = await action(prev, formData);
+    let result: ActionState;
+    try {
+      result = await action(prev, formData);
+    } catch (error) {
+      result = actionFailure(error);
+    }
     setErrors(result.fieldErrors ?? {});
     if (result.ok) {
+      setCurrent("");
       setPassword("");
       setConfirm("");
       setVisible(false);
       toast.success(result.message ?? "Contraseña actualizada.");
     } else {
       toast.error(result.message ?? "No pudimos actualizar la contraseña.");
+      if (result.fieldErrors?.current_password) document.getElementById("current_password")?.focus();
+      else if (result.fieldErrors?.password) document.getElementById("new_password")?.focus();
     }
     return result;
   }, initialActionState);
 
-  const score = strengthOf(password);
+  const strength = passwordStrength(password);
   const mismatch = confirm.length > 0 && password.length > 0 && confirm !== password;
-  const canSubmit = password.length >= PASSWORD_MIN && confirm === password;
+  const sameAsCurrent = password.length > 0 && password === current;
+  const canSubmit = current.length > 0 && password.length >= PASSWORD_MIN && confirm === password && !sameAsCurrent;
+
+  const onSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (pending || !canSubmit) return;
+    const formData = new FormData(event.currentTarget);
+    startTransition(() => formAction(formData));
+  };
 
   return (
-    <form action={formAction} noValidate className="rounded-panel bg-surface-2 p-5 sm:p-6">
+    <form onSubmit={onSubmit} noValidate className="rounded-panel bg-surface-2 p-5 sm:p-6" aria-labelledby="password-form-title">
       <div className="mb-5 flex items-start justify-between gap-3">
         <div>
-          <h3 className="flex items-center gap-2 text-[17px] font-medium text-ink">
+          <h3 id="password-form-title" className="flex items-center gap-2 text-[17px] font-medium text-ink">
             <KeyRound aria-hidden className="size-4" strokeWidth={1.8} />
             Cambiar contraseña
           </h3>
-          <p className="mt-1 text-sm text-muted">Mínimo {PASSWORD_MIN} caracteres. Mezclá letras, números y símbolos.</p>
+          <p className="mt-1 text-sm text-muted">
+            Mínimo {PASSWORD_MIN} caracteres. Al guardarla, cerramos tu sesión en los demás dispositivos.
+          </p>
         </div>
         <button
           type="button"
           onClick={() => setVisible((v) => !v)}
           aria-pressed={visible}
+          aria-label={visible ? "Ocultar contraseñas" : "Mostrar contraseñas"}
           className="inline-flex h-10 shrink-0 items-center gap-1.5 rounded-full px-3 text-[13px] font-medium text-muted transition-colors hover:bg-surface-3 hover:text-ink"
         >
-          {visible ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+          {visible ? <EyeOff aria-hidden className="size-4" /> : <Eye aria-hidden className="size-4" />}
           {visible ? "Ocultar" : "Mostrar"}
         </button>
       </div>
 
       <div className="grid gap-5 sm:grid-cols-2">
-        <Field label="Nueva contraseña" htmlFor="new_password" error={errors.password}>
+        <Field
+          label="Contraseña actual"
+          htmlFor="current_password"
+          error={errors.current_password}
+          hint="¿No la recordás? Cerrá sesión y entrá a “¿Olvidaste tu contraseña?”."
+          className="sm:col-span-2"
+        >
+          <PasswordInput
+            id="current_password"
+            name="current_password"
+            value={current}
+            onChange={(v) => {
+              setCurrent(v);
+              if (errors.current_password) setErrors((e) => ({ ...e, current_password: undefined }));
+            }}
+            visible={visible}
+            autoComplete="current-password"
+            invalid={Boolean(errors.current_password)}
+          />
+        </Field>
+        <Field
+          label="Nueva contraseña"
+          htmlFor="new_password"
+          error={errors.password ?? (sameAsCurrent ? "Elegí una contraseña distinta de la actual." : undefined)}
+        >
           <PasswordInput
             id="new_password"
             name="password"
@@ -126,7 +160,8 @@ function PasswordForm({ action }: { action: FormAction }) {
             }}
             visible={visible}
             autoComplete="new-password"
-            invalid={Boolean(errors.password)}
+            minLength={PASSWORD_MIN}
+            invalid={Boolean(errors.password) || sameAsCurrent}
             describedBy={strengthId}
           />
         </Field>
@@ -145,6 +180,7 @@ function PasswordForm({ action }: { action: FormAction }) {
             }}
             visible={visible}
             autoComplete="new-password"
+            minLength={PASSWORD_MIN}
             invalid={Boolean(errors.confirm) || mismatch}
           />
         </Field>
@@ -156,12 +192,17 @@ function PasswordForm({ action }: { action: FormAction }) {
             {[1, 2, 3, 4].map((i) => (
               <span
                 key={i}
-                className={cn("h-1.5 flex-1 rounded-full transition-colors", password && i <= score ? STRENGTH[score].color : "bg-line-strong/70")}
+                className="h-1.5 flex-1 rounded-full bg-line-strong/70 transition-colors"
+                style={password && i <= strength.score ? { backgroundColor: strength.color } : undefined}
               />
             ))}
           </div>
           <span className="text-[13px] text-muted">
-            {password ? `Seguridad: ${STRENGTH[score].label.toLowerCase()}` : "Escribí una contraseña nueva"}
+            {password
+              ? password.length < PASSWORD_MIN
+                ? `Te faltan ${PASSWORD_MIN - password.length} ${PASSWORD_MIN - password.length === 1 ? "carácter" : "caracteres"}`
+                : `Seguridad: ${strength.label.toLowerCase()}`
+              : "Escribí una contraseña nueva"}
           </span>
         </div>
         <SubmitButton pending={pending} pendingLabel="Actualizando…" disabled={!canSubmit} className="h-11">
@@ -172,7 +213,7 @@ function PasswordForm({ action }: { action: FormAction }) {
   );
 }
 
-/** Cuenta: email de acceso, cambio de contraseña y cierre de sesión. */
+/** Cuenta: email de acceso, cambio de contraseña, tus datos y cierre de sesión. */
 export function AccountCard({ email, changePasswordAction }: { email: string; changePasswordAction: FormAction }) {
   return (
     <SettingsSection
@@ -184,7 +225,7 @@ export function AccountCard({ email, changePasswordAction }: { email: string; ch
       <div className="flex flex-col gap-4">
         <div className="flex flex-wrap items-center gap-4 rounded-panel bg-surface-2 p-5 sm:p-6">
           <span className="inline-flex size-11 shrink-0 items-center justify-center rounded-full bg-surface text-ink shadow-inset">
-            <Mail className="size-5" strokeWidth={1.7} />
+            <Mail aria-hidden className="size-5" strokeWidth={1.7} />
           </span>
           <div className="min-w-0 flex-1">
             <p className="text-[13px] font-medium text-ink-2">Email de acceso</p>
@@ -196,6 +237,34 @@ export function AccountCard({ email, changePasswordAction }: { email: string; ch
         </div>
 
         <PasswordForm action={changePasswordAction} />
+
+        <div className="flex items-start gap-4 rounded-panel bg-surface-2 p-5 sm:p-6">
+          <span className="inline-flex size-11 shrink-0 items-center justify-center rounded-full bg-surface text-ink shadow-inset">
+            <FileText aria-hidden className="size-5" strokeWidth={1.7} />
+          </span>
+          <div className="min-w-0 flex-1 text-sm leading-relaxed text-muted">
+            <h3 className="text-[15px] font-medium text-ink">Tus registros clínicos</h3>
+            <p className="mt-1">
+              Podés imprimir o guardar en PDF el informe de cada paciente desde su ficha. La historia clínica se conserva al
+              menos 10 años (Ley 26.529, art. 18), aunque elimines un paciente o cierres tu cuenta.
+            </p>
+            <p className="mt-2">
+              Para pedir una copia de todos tus registros o el cierre de tu cuenta, escribinos
+              {CONTACT_EMAIL ? (
+                <>
+                  {" "}
+                  a{" "}
+                  <a href={`mailto:${CONTACT_EMAIL}`} className="font-medium text-ink underline underline-offset-4">
+                    {CONTACT_EMAIL}
+                  </a>
+                </>
+              ) : (
+                " al soporte de kine"
+              )}
+              .
+            </p>
+          </div>
+        </div>
 
         <div className="flex flex-wrap items-center justify-between gap-4 rounded-panel p-1 pt-3 sm:pt-4">
           <div className="min-w-0">

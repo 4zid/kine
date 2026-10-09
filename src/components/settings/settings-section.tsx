@@ -83,6 +83,7 @@ export function SaveFooter({
         <SubmitButton
           pending={pending}
           pendingLabel="Guardando…"
+          disabled={!dirty}
           variant={dirty ? "primary" : "inverse"}
           iconRight={<ArrowRight />}
           className={cn("h-12 px-6", !dirty && "shadow-soft")}

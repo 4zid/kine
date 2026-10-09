@@ -15,21 +15,26 @@ async function contextOrNull() {
 /** Oculta la guía "Primeros pasos" marcando el onboarding como completado. */
 export async function completeOnboarding(): Promise<ActionState> {
   const ctx = await contextOrNull();
-  if (!ctx) return { ok: false, message: "Tu sesión expiró. Volvé a ingresar." };
+  if (!ctx) return { ok: false, message: "Tu sesión expiró. Volvé a ingresar para guardar." };
   const { supabase, userId } = ctx;
 
-  const { data, error } = await supabase
-    .from("professionals")
-    .update({ onboarding_completed_at: new Date().toISOString() })
-    .eq("id", userId)
-    .select("id")
-    .maybeSingle();
+  try {
+    const { data, error } = await supabase
+      .from("professionals")
+      .update({ onboarding_completed_at: new Date().toISOString() })
+      .eq("id", userId)
+      .select("id")
+      .maybeSingle();
 
-  if (error) {
-    console.error("completeOnboarding", error.code, error.message);
-    return { ok: false, message: "No pudimos ocultar la guía. Probá de nuevo." };
+    if (error) {
+      console.error("completeOnboarding", error.code, error.message);
+      return { ok: false, message: "No pudimos ocultar la guía. Probá de nuevo." };
+    }
+    if (!data) return { ok: false, message: "No encontramos tu perfil. Volvé a ingresar." };
+  } catch (err) {
+    console.error("completeOnboarding (inesperado)", err);
+    return { ok: false, message: "No pudimos ocultar la guía. Revisá tu conexión y probá de nuevo." };
   }
-  if (!data) return { ok: false, message: "No encontramos tu perfil. Volvé a ingresar." };
 
   revalidatePath("/inicio");
   return { ok: true, message: "Listo. Podés completar tu perfil cuando quieras desde Ajustes." };

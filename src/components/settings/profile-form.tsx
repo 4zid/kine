@@ -22,7 +22,7 @@ export function ProfileForm({ professional, action }: { professional: SettingsPr
     phone: professional.phone ?? "",
     bio: professional.bio ?? "",
   };
-  const { values, set, errors, formAction, pending, dirty, discard } = useSettingsForm(initial, action);
+  const { values, set, errors, onSubmit, pending, dirty, discard } = useSettingsForm(initial, action);
 
   const displayName = [values.first_name.trim(), values.last_name.trim()].filter(Boolean).join(" ");
   const specialtyLabels = professional.specialties
@@ -32,7 +32,7 @@ export function ProfileForm({ professional, action }: { professional: SettingsPr
   const license = licenseLabel(professional);
 
   return (
-    <form action={formAction} noValidate>
+    <form onSubmit={onSubmit} noValidate>
       <SettingsSection
         id="perfil"
         icon={<UserRound strokeWidth={1.7} />}
@@ -45,7 +45,7 @@ export function ProfileForm({ professional, action }: { professional: SettingsPr
         <div className="mb-7 flex items-center gap-4 rounded-panel bg-surface-2 p-4 sm:p-5">
           <Avatar person={{ id: "me", first_name: values.first_name, last_name: values.last_name }} size="lg" />
           <div className="min-w-0">
-            <p className="display truncate text-[22px] font-medium text-ink">Lic. {displayName || "Tu nombre"}</p>
+            <p className="display truncate text-[22px] font-medium text-ink">{displayName ? `Lic. ${displayName}` : "Tu nombre"}</p>
             <p className="mt-0.5 truncate text-sm text-muted">
               {[license, ...specialtyLabels].filter(Boolean).join(" · ") || "Completá tus datos profesionales"}
             </p>
@@ -77,7 +77,7 @@ export function ProfileForm({ professional, action }: { professional: SettingsPr
               aria-invalid={Boolean(errors.last_name) || undefined}
             />
           </Field>
-          <Field label="Teléfono" htmlFor="phone" optional error={errors.phone} hint="Con código de área. Ej.: 11 5555-1234">
+          <Field label="Teléfono" htmlFor="phone" optional error={errors.phone} hint="Con código de área.">
             <Input
               id="phone"
               name="phone"
@@ -85,7 +85,7 @@ export function ProfileForm({ professional, action }: { professional: SettingsPr
               inputMode="tel"
               autoComplete="tel"
               maxLength={L.phone}
-              placeholder="+54 11 5555-1234"
+              placeholder="Ej.: 11 5555-1234"
               value={values.phone}
               onChange={(e) => set("phone", e.target.value)}
               aria-invalid={Boolean(errors.phone) || undefined}
@@ -100,7 +100,7 @@ export function ProfileForm({ professional, action }: { professional: SettingsPr
             hint={
               <span className="flex justify-between gap-3">
                 <span>Formación, enfoque de trabajo, idiomas…</span>
-                <span className={cn("tabular shrink-0", values.bio.length > L.bio * 0.9 && "text-warning")}>
+                <span className={cn("tabular shrink-0", values.bio.length > L.bio * 0.9 && "text-warning-ink")}>
                   {values.bio.length}/{L.bio}
                 </span>
               </span>

@@ -4,6 +4,7 @@ import { ArrowRight } from "lucide-react";
 import Link from "next/link";
 import { useActionState, useState, type FormEvent } from "react";
 import { signIn, type SignInResult } from "@/app/(auth)/ingresar/actions";
+import { guardAction } from "@/components/auth/action-guard";
 import { AuthHeading } from "@/components/auth/auth-split-layout";
 import { FormAlert } from "@/components/auth/form-alert";
 import { PasswordInput } from "@/components/auth/password-input";
@@ -18,6 +19,7 @@ export type LoginNotice = { tone: "success" | "warning" | "error"; title: string
 type Errors = Partial<Record<"email" | "password", string>>;
 
 const initialState: ActionState<SignInResult> = { ok: false };
+const submitSignIn = guardAction(signIn);
 
 /** Formulario de ingreso (email + contraseña). */
 export function LoginForm({
@@ -31,7 +33,7 @@ export function LoginForm({
   /** Aviso que llega por URL (email confirmado, link vencido…). */
   notice?: LoginNotice;
 }) {
-  const [state, formAction, isPending] = useActionState(signIn, initialState);
+  const [state, formAction, isPending] = useActionState(submitSignIn, initialState);
   const [email, setEmail] = useState(defaultEmail);
   const [password, setPassword] = useState("");
   const [errors, setErrors] = useState<Errors>({});

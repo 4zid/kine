@@ -60,7 +60,7 @@ export function DashboardView({
       {data.isNewAccount ? (
         <>
           <NewAccountHero todayIndex={diffDays(mondayOf(today), today)} />
-          <div className="grid items-start gap-5 xl:grid-cols-12">
+          <div className="grid grid-cols-1 items-start gap-5 xl:grid-cols-12">
             {data.checklist ? (
               <OnboardingChecklist
                 steps={data.checklist}
@@ -73,7 +73,7 @@ export function DashboardView({
         </>
       ) : (
         <>
-          <div className="grid gap-5 xl:grid-cols-12">
+          <div className="grid grid-cols-1 gap-5 xl:grid-cols-12">
             <SummaryCard summary={summary} week={week} className="animate-fade-up xl:col-span-7" />
             <AttendanceCard
               attendance={data.attendance}
@@ -84,7 +84,7 @@ export function DashboardView({
 
           <WeekStrip week={week} today={today} basePath={basePath} className="pt-2" />
 
-          <div className="grid items-start gap-5 xl:grid-cols-12">
+          <div className="grid grid-cols-1 items-start gap-5 xl:grid-cols-12">
             <DaySessions
               sessions={data.daySessions}
               selectedDay={data.selectedDay}
@@ -92,7 +92,7 @@ export function DashboardView({
               hasActivePatients={hasActivePatients}
               className="xl:col-span-7"
             />
-            <div className="flex flex-col gap-5 xl:col-span-5">
+            <div className="flex min-w-0 flex-col gap-5 xl:col-span-5">
               {data.checklist ? (
                 <OnboardingChecklist steps={data.checklist} dismissAction={dismissOnboardingAction} />
               ) : null}

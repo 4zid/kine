@@ -1,11 +1,16 @@
 "use client";
 
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { useEffect } from "react";
 import { toast } from "sonner";
 
 const FLASHES: Record<string, { param: string; value: string; title: string; description?: string }> = {
-  clave: { param: "clave", value: "actualizada", title: "Actualizaste tu contraseña." },
+  clave: {
+    param: "clave",
+    value: "actualizada",
+    title: "Actualizaste tu contraseña.",
+    description: "Cerramos tu sesión en los demás dispositivos.",
+  },
 };
 
 /**
@@ -15,7 +20,6 @@ const FLASHES: Record<string, { param: string; value: string; title: string; des
  */
 export function AuthFlashToast() {
   const params = useSearchParams();
-  const router = useRouter();
   const pathname = usePathname();
 
   useEffect(() => {
@@ -25,8 +29,10 @@ export function AuthFlashToast() {
     const next = new URLSearchParams(params.toString());
     matches.forEach((f) => next.delete(f.param));
     const qs = next.toString();
-    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
-  }, [params, pathname, router]);
+    // history.replaceState (sincronizado por Next con useSearchParams) limpia la URL sin
+    // volver a pedir la página al servidor.
+    window.history.replaceState(null, "", `${qs ? `${pathname}?${qs}` : pathname}${window.location.hash}`);
+  }, [params, pathname]);
 
   return null;
 }

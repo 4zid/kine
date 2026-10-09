@@ -29,11 +29,11 @@ export function ProfessionalForm({ professional, action }: { professional: Setti
     license_province: professional.license_province ?? "",
     specialties: professional.specialties ?? [],
   };
-  const { values, set, errors, formAction, pending, dirty, discard } = useSettingsForm(initial, action);
+  const { values, set, errors, onSubmit, pending, dirty, discard } = useSettingsForm(initial, action);
   const count = values.specialties.length;
 
   return (
-    <form action={formAction} noValidate>
+    <form onSubmit={onSubmit} noValidate>
       <SettingsSection
         id="datos-profesionales"
         icon={<BadgeCheck strokeWidth={1.7} />}

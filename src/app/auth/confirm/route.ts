@@ -1,43 +1,43 @@
-import type { EmailOtpType } from "@supabase/supabase-js";
 import { NextResponse, type NextRequest } from "next/server";
+import {
+  confirmPagePath,
+  defaultNextFor,
+  isTokenHash,
+  linkErrorPath,
+  parseEmailLinkType,
+} from "@/components/auth/email-link";
+import { internalNextPath, isInternalPath } from "@/components/auth/redirects";
 import { siteUrlFromHeaders } from "@/components/auth/site-url";
-import { HOME_PATH, safeNextPath } from "@/lib/routes";
-import { createClient } from "@/lib/supabase/server";
-
-const OTP_TYPES: readonly EmailOtpType[] = ["signup", "invite", "magiclink", "recovery", "email_change", "email"];
-
-function isOtpType(value: string | null): value is EmailOtpType {
-  return value !== null && (OTP_TYPES as readonly string[]).includes(value);
-}
+import { HOME_PATH } from "@/lib/routes";
 
 /**
- * Verificación por `token_hash` (plantillas de email con
+ * Links de email con `token_hash` (plantillas de Supabase Auth con
  * `{{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type=...`).
- * Funciona aunque el link se abra en otro dispositivo (no depende de PKCE).
+ * Funcionan aunque el link se abra en otro dispositivo (no dependen de PKCE).
+ *
+ * Un GET nunca verifica el token: si lo hiciera, cualquier link (o un escáner de
+ * correo que lo abre por adelantado) podría iniciar sesión en la cuenta de otra
+ * persona sin que el usuario lo note, o consumir el token antes de tiempo.
+ * Redirigimos a la pantalla intermedia /auth/confirmar, que verifica recién
+ * cuando la persona toca "Confirmar" (POST).
  */
 export async function GET(request: NextRequest) {
   const { searchParams } = request.nextUrl;
   const origin = siteUrlFromHeaders(request.headers);
+  const to = (path: string) => {
+    const url = new URL(isInternalPath(path) ? path : HOME_PATH, origin);
+    const res = NextResponse.redirect(url.origin === new URL(origin).origin ? url : new URL(HOME_PATH, origin), 303);
+    res.headers.set("Cache-Control", "no-store");
+    res.headers.set("Referrer-Policy", "no-referrer");
+    return res;
+  };
+
+  const type = parseEmailLinkType(searchParams.get("type"));
   const tokenHash = searchParams.get("token_hash");
-  const rawType = searchParams.get("type");
-  const type = isOtpType(rawType) ? rawType : null;
-  const fallback =
-    type === "recovery" ? "/restablecer" : type === "signup" || type === "email" ? `${HOME_PATH}?bienvenida=1` : HOME_PATH;
-  const next = safeNextPath(searchParams.get("next"), fallback);
-
-  const to = (path: string) => NextResponse.redirect(new URL(path, origin));
-
-  if (tokenHash && type) {
-    try {
-      const supabase = await createClient();
-      const { error } = await supabase.auth.verifyOtp({ type, token_hash: tokenHash });
-      if (!error) return to(next);
-      console.error("[auth/confirm] verifyOtp", error.code, error.message);
-    } catch (err) {
-      console.error("[auth/confirm] error inesperado", err);
-    }
+  if (!type || !isTokenHash(tokenHash)) {
+    return to(linkErrorPath(type, searchParams.get("error_code")));
   }
 
-  if (type === "recovery") return to("/recuperar?error=link");
-  return to("/ingresar?error=link_invalido");
+  const next = internalNextPath(searchParams.get("next"), defaultNextFor(type));
+  return to(confirmPagePath({ tokenHash, type, next }));
 }

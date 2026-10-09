@@ -13,10 +13,13 @@ import {
 // ---------------------------------------------------------------------------
 // Entradas (filas tal como llegan de Supabase)
 // ---------------------------------------------------------------------------
+/** Candidato a "Requieren atención" (vista patient_overview, solo las columnas necesarias). */
 export type DashboardPatientRow = Pick<
   PatientOverview,
-  "id" | "first_name" | "last_name" | "max_pain" | "active_regions" | "last_session_date" | "created_at"
+  "id" | "first_name" | "last_name" | "max_pain" | "last_session_date" | "created_at" | "last_activity_at"
 >;
+
+export type DashboardChecklistPatient = Pick<PatientOverview, "id" | "first_name" | "last_name">;
 
 type EmbeddedPatient = { id: string; first_name: string; last_name: string };
 
@@ -46,11 +49,26 @@ export type DashboardInput = {
   professional: Pick<Professional, "first_name" | "license_number" | "specialties" | "onboarding_completed_at">;
   /** Hoy en Argentina (YYYY-MM-DD), calculado en el servidor. */
   today: string;
-  /** Día seleccionado (YYYY-MM-DD) ya validado. */
+  /** Día seleccionado (YYYY-MM-DD) ya validado. Si es posterior a hoy, se usa hoy. */
   selectedDay: string;
-  /** Pacientes activos (vista patient_overview). */
-  activePatients: DashboardPatientRow[];
-  /** Sesiones de la semana visible. */
+  /** Pacientes en tratamiento (conteo exacto). */
+  activeCount: number;
+  /**
+   * Dolor actual por zona (mapa corporal) de cada paciente en tratamiento con dolor
+   * activo: `patient_overview.max_pain` (zonas no resueltas con intensidad > 0).
+   */
+  activePains: number[];
+  /** En tratamiento con dolor intenso: de mayor a menor, y con actividad más reciente primero. */
+  severeCandidates: DashboardPatientRow[];
+  /** En tratamiento sin sesión reciente: actividad más reciente primero. */
+  inactiveCandidates: DashboardPatientRow[];
+  /** Total de pacientes que requieren atención (conteo exacto). */
+  attentionTotal: number;
+  /** Último registro de dolor activo en el mapa, por paciente (ISO), para mostrar su antigüedad. */
+  painUpdatedAt?: Record<string, string>;
+  /** Paciente con actividad más reciente (atajos de "Primeros pasos"). */
+  checklistPatient?: DashboardChecklistPatient | null;
+  /** Sesiones de la semana visible (hasta hoy). */
   weekSessions: DashboardSessionRow[];
   /** Total de pacientes del profesional (cualquier estado). */
   totalPatients: number;
@@ -83,6 +101,8 @@ export type DaySession = {
   techniques: { value: string; label: string; dot: string }[];
   painBefore: number | null;
   painAfter: number | null;
+  /** Edición de la sesión (para completar la evolución del día). */
+  href: string;
 };
 
 export type AttentionReason =
@@ -93,7 +113,10 @@ export type AttentionItem = {
   id: string;
   first_name: string;
   last_name: string;
+  /** Dolor actual por zona (mapa corporal). */
   maxPain: number | null;
+  /** Cuándo se registró ese dolor en el mapa (ISO), o null si no se sabe. */
+  painUpdatedAt: string | null;
   reasons: AttentionReason[];
 };
 
@@ -119,13 +142,17 @@ export type DashboardData = {
     rangeLabel: string;
     isCurrent: boolean;
     prevDay: string;
+    /** Día de la semana siguiente (nunca posterior a hoy). */
     nextDay: string;
+    /** false en la semana actual: no hay sesiones futuras que ver. */
+    canGoNext: boolean;
     days: WeekDay[];
   };
   summary: {
     activePatients: number;
     attendedSessions: number;
     daysWithSessions: number;
+    /** Promedio del dolor actual por zona (mapa) de los pacientes con dolor activo. */
     avgPain: number | null;
     severeCount: number;
   };
@@ -133,7 +160,7 @@ export type DashboardData = {
     attended: number;
     absent: number;
     cancelled: number;
-    /** 0-100, o null si no hubo turnos con asistencia definida. */
+    /** 0-100, o null si no hubo sesiones con asistencia definida. */
     rate: number | null;
   };
   daySessions: DaySession[];
@@ -147,7 +174,7 @@ export type DashboardData = {
 // ---------------------------------------------------------------------------
 export const SEVERE_PAIN = 7;
 export const INACTIVE_DAYS = 14;
-const MAX_ATTENTION = 5;
+export const MAX_ATTENTION = 5;
 
 const TECHNIQUE_META = new Map(
   TECHNIQUES.map((t, i) => [t.value, { label: t.label, dot: DOT_COLORS[i % DOT_COLORS.length] }]),
@@ -179,9 +206,39 @@ export function weekBounds(day: string) {
   return { start, end: addDaysISO(start, 6) };
 }
 
+/**
+ * Fecha límite de "sin sesión reciente": la última sesión (o el alta en kine, si
+ * nunca vino) es anterior a este día. Coincide con `diffDays(referencia, hoy) > INACTIVE_DAYS`.
+ */
+export function inactiveCutoff(today: string): string {
+  return addDaysISO(today, -INACTIVE_DAYS);
+}
+
+/** Motivos por los que un paciente requiere atención: dolor intenso en el mapa o sin sesión reciente. */
+function attentionReasons(p: DashboardPatientRow, today: string): AttentionReason[] {
+  const reasons: AttentionReason[] = [];
+  if (p.max_pain != null && p.max_pain >= SEVERE_PAIN) {
+    reasons.push({ kind: "pain", intensity: p.max_pain });
+  }
+  // Referencia: última sesión a la que asistió; si nunca vino, el día en que se lo cargó en kine.
+  const reference = p.last_session_date ?? (p.created_at ? toISODate(new Date(p.created_at)) : null);
+  if (reference) {
+    const days = diffDays(reference, today);
+    if (days > INACTIVE_DAYS) {
+      reasons.push({ kind: "inactive", days, neverAttended: p.last_session_date == null });
+    }
+  }
+  return reasons;
+}
+
 export function buildDashboardData(input: DashboardInput): DashboardData {
-  const { today, selectedDay, activePatients, weekSessions, professional } = input;
+  const { today, professional } = input;
+  // Las sesiones registran atenciones que ya ocurrieron: nunca mostramos días futuros.
+  const selectedDay = input.selectedDay > today ? today : input.selectedDay;
   const { start, end } = weekBounds(selectedDay);
+  const currentMonday = mondayOf(today);
+  // Defensivo: filas viejas con fecha futura no cuentan como sesiones hechas.
+  const weekSessions = input.weekSessions.filter((s) => s.session_date <= today);
 
   // --- Semana -----------------------------------------------------------------
   const byDay = new Map<string, DashboardSessionRow[]>();
@@ -199,7 +256,7 @@ export function buildDashboardData(input: DashboardInput): DashboardData {
       label: weekdayShort(i),
       dayNumber: Number(iso.slice(8, 10)),
       sessionCount: list.length,
-      attended: list.some((s) => s.attendance === "attended"),
+      attended: iso <= today && list.some((s) => s.attendance === "attended"),
       isToday: iso === today,
       isSelected: iso === selectedDay,
       isFuture: iso > today,
@@ -220,7 +277,8 @@ export function buildDashboardData(input: DashboardInput): DashboardData {
   const rate = denominator > 0 ? Math.round((attended / denominator) * 100) : null;
 
   // --- Resumen ----------------------------------------------------------------
-  const pains = activePatients.map((p) => p.max_pain).filter((v): v is number => v != null);
+  // Dolor activo = intensidad > 0 (la vista ya devuelve null si no hay zonas activas).
+  const pains = input.activePains.filter((v) => Number.isFinite(v) && v > 0);
   const avgPain = pains.length > 0 ? pains.reduce((a, b) => a + b, 0) / pains.length : null;
   const severeCount = pains.filter((v) => v >= SEVERE_PAIN).length;
 
@@ -240,45 +298,35 @@ export function buildDashboardData(input: DashboardInput): DashboardData {
         techniques: (s.techniques ?? []).map((t) => ({ value: t, ...techniqueMeta(t) })),
         painBefore: s.pain_before,
         painAfter: s.pain_after,
+        href: `/pacientes/${s.patient_id}/sesiones/${s.id}/editar`,
       };
     });
 
   // --- Requieren atención -----------------------------------------------------
-  const attentionAll: AttentionItem[] = [];
-  for (const p of activePatients) {
-    if (!p.id) continue;
-    const reasons: AttentionReason[] = [];
-    if (p.max_pain != null && p.max_pain >= SEVERE_PAIN) {
-      reasons.push({ kind: "pain", intensity: p.max_pain });
-    }
-    // Referencia: última sesión a la que asistió; si nunca vino, el día en que se lo cargó en kine.
-    const reference = p.last_session_date ?? (p.created_at ? toISODate(new Date(p.created_at)) : null);
-    if (reference) {
-      const days = diffDays(reference, today);
-      if (days > INACTIVE_DAYS) {
-        reasons.push({ kind: "inactive", days, neverAttended: p.last_session_date == null });
-      }
-    }
-    if (reasons.length > 0) {
-      attentionAll.push({
-        id: p.id,
-        first_name: p.first_name ?? "",
-        last_name: p.last_name ?? "",
-        maxPain: p.max_pain,
-        reasons,
-      });
-    }
+  // Primero dolor intenso (de mayor a menor); después sin sesión reciente (actividad más reciente primero).
+  const painUpdatedAt = input.painUpdatedAt ?? {};
+  const attentionById = new Map<string, AttentionItem>();
+  for (const p of [...input.severeCandidates, ...input.inactiveCandidates]) {
+    if (!p.id || attentionById.has(p.id)) continue;
+    const reasons = attentionReasons(p, today);
+    if (reasons.length === 0) continue;
+    attentionById.set(p.id, {
+      id: p.id,
+      first_name: p.first_name ?? "",
+      last_name: p.last_name ?? "",
+      maxPain: p.max_pain,
+      painUpdatedAt: p.max_pain != null ? (painUpdatedAt[p.id] ?? null) : null,
+      reasons,
+    });
   }
-  const inactiveDays = (item: AttentionItem) =>
-    item.reasons.reduce((acc, r) => (r.kind === "inactive" ? Math.max(acc, r.days) : acc), 0);
-  attentionAll.sort((a, b) => (b.maxPain ?? -1) - (a.maxPain ?? -1) || inactiveDays(b) - inactiveDays(a));
+  const attention = Array.from(attentionById.values()).slice(0, MAX_ATTENTION);
 
   // --- Primeros pasos ---------------------------------------------------------
   let checklist: ChecklistStep[] | null = null;
   if (!professional.onboarding_completed_at && input.checklistCounts) {
     const c = input.checklistCounts;
     // Si ya hay pacientes, los pasos clínicos llevan directo a la ficha del más reciente.
-    const first = activePatients.find((p) => p.id);
+    const first = input.checklistPatient?.id ? input.checklistPatient : null;
     const firstName = first ? fullName(first) : null;
     checklist = [
       {
@@ -309,15 +357,16 @@ export function buildDashboardData(input: DashboardInput): DashboardData {
       },
       {
         key: "session",
-        title: "Cargá tu primera sesión",
-        description: "Evolución SOAP, técnicas y dolor antes y después.",
-        href: first ? `/pacientes/${first.id}/sesiones` : "/pacientes",
-        cta: first ? "Cargar sesión" : "Ver pacientes",
+        title: "Registrá tu primera sesión",
+        description: "Después de atender: evolución SOAP, técnicas y EVA antes y después.",
+        href: first ? `/pacientes/${first.id}/sesiones/nueva` : "/pacientes",
+        cta: first ? "Nueva sesión" : "Ver pacientes",
         done: c.sessions > 0,
       },
     ];
   }
 
+  const nextDay = addDaysISO(selectedDay, 7);
   return {
     firstName: professional.first_name?.trim() ?? "",
     today,
@@ -329,13 +378,14 @@ export function buildDashboardData(input: DashboardInput): DashboardData {
       end,
       number: weekNumber(start),
       rangeLabel: formatWeekRange(start, end),
-      isCurrent: start === mondayOf(today),
+      isCurrent: start === currentMonday,
       prevDay: addDaysISO(selectedDay, -7),
-      nextDay: addDaysISO(selectedDay, 7),
+      nextDay: nextDay > today ? today : nextDay,
+      canGoNext: start < currentMonday,
       days,
     },
     summary: {
-      activePatients: activePatients.length,
+      activePatients: input.activeCount,
       attendedSessions: attended,
       daysWithSessions: days.filter((d) => d.attended).length,
       avgPain,
@@ -343,8 +393,8 @@ export function buildDashboardData(input: DashboardInput): DashboardData {
     },
     attendance: { attended, absent, cancelled, rate },
     daySessions,
-    attention: attentionAll.slice(0, MAX_ATTENTION),
-    attentionTotal: attentionAll.length,
+    attention,
+    attentionTotal: Math.max(input.attentionTotal, attentionById.size),
     checklist,
   };
 }

@@ -2,8 +2,9 @@ import type { Metadata } from "next";
 import { LoginAside } from "@/components/auth/auth-asides";
 import { AuthSplitLayout, TopLink } from "@/components/auth/auth-split-layout";
 import { LoginForm, type LoginNotice } from "@/components/auth/login-form";
+import { internalNextPath } from "@/components/auth/redirects";
 import { emailParam, firstParam } from "@/components/auth/search-params";
-import { HOME_PATH, safeNextPath } from "@/lib/routes";
+import { HOME_PATH } from "@/lib/routes";
 
 export const metadata: Metadata = {
   title: "Ingresar",
@@ -31,6 +32,12 @@ function noticeFrom(confirmed: string | undefined, error: string | undefined): L
       };
     case "sesion":
       return { tone: "warning", title: "Tu sesión expiró.", text: "Ingresá de nuevo para continuar." };
+    case "otra_cuenta":
+      return {
+        tone: "warning",
+        title: "El link era de otra cuenta.",
+        text: "Por seguridad cerramos esa sesión. Ingresá con tu email y contraseña.",
+      };
     default:
       return { tone: "error", title: "No pudimos validar el link.", text: "Probá ingresar con tu email y contraseña." };
   }
@@ -38,7 +45,7 @@ function noticeFrom(confirmed: string | undefined, error: string | undefined): L
 
 export default async function IngresarPage({ searchParams }: PageProps<"/ingresar">) {
   const sp = await searchParams;
-  const next = safeNextPath(firstParam(sp.next), HOME_PATH);
+  const next = internalNextPath(firstParam(sp.next), HOME_PATH);
   const notice = noticeFrom(firstParam(sp.confirmado), firstParam(sp.error));
 
   return (

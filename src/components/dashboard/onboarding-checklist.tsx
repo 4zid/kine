@@ -4,6 +4,7 @@ import { ArrowRight, Check, ChevronRight } from "lucide-react";
 import Link from "next/link";
 import { useActionState } from "react";
 import { toast } from "sonner";
+import { actionFailure } from "@/components/auth/action-guard";
 import { SubmitButton } from "@/components/ui/submit-button";
 import { initialActionState, type ActionState } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -24,7 +25,12 @@ export function OnboardingChecklist({
   className?: string;
 }) {
   const [, formAction, isPending] = useActionState<ActionState, FormData>(async (prev, formData) => {
-    const result = await dismissAction(prev, formData);
+    let result: ActionState;
+    try {
+      result = await dismissAction(prev, formData);
+    } catch (error) {
+      result = actionFailure(error);
+    }
     if (result.ok) toast.success(result.message ?? "Listo, ocultamos la guía.");
     else toast.error(result.message ?? "No pudimos ocultar la guía. Probá de nuevo.");
     return result;
@@ -64,9 +70,14 @@ export function OnboardingChecklist({
             Dejá tu consultorio <span className="font-semibold">listo para atender.</span>
           </h2>
         </div>
-        <p className="display tabular shrink-0 pt-1 text-ink" aria-label={`${doneCount} de ${steps.length} completados`}>
-          <span className="text-[26px] font-medium">{doneCount}</span>
-          <span className="text-base text-muted">/{steps.length}</span>
+        <p className="display tabular shrink-0 pt-1 text-ink">
+          <span aria-hidden>
+            <span className="text-[26px] font-medium">{doneCount}</span>
+            <span className="text-base text-muted">/{steps.length}</span>
+          </span>
+          <span className="sr-only">
+            {doneCount} de {steps.length} pasos completados
+          </span>
         </p>
       </div>
 

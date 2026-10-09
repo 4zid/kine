@@ -4,8 +4,9 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { mapAuthError, NETWORK_MESSAGE } from "@/components/auth/auth-errors";
 import { markOnboardedServer } from "@/components/auth/onboarded-server";
+import { internalNextPath } from "@/components/auth/redirects";
 import { signInSchema, toFieldErrors } from "@/components/auth/schemas";
-import { HOME_PATH, safeNextPath } from "@/lib/routes";
+import { HOME_PATH } from "@/lib/routes";
 import { createClient } from "@/lib/supabase/server";
 import type { ActionState } from "@/lib/types";
 
@@ -25,7 +26,7 @@ export async function signIn(_prev: ActionState<SignInResult>, formData: FormDat
     return { ok: false, fieldErrors: toFieldErrors(parsed.error) };
   }
 
-  const next = safeNextPath(text(formData, "next"), HOME_PATH);
+  const next = internalNextPath(text(formData, "next"), HOME_PATH);
   const supabase = await createClient();
 
   let error: Awaited<ReturnType<typeof supabase.auth.signInWithPassword>>["error"];

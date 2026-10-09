@@ -12,11 +12,13 @@ function plural(n: number, one: string, many: string) {
 function Kpi({ label, shortLabel, value, suffix }: { label: string; shortLabel?: string; value: ReactNode; suffix?: string }) {
   return (
     <div className="flex min-w-0 flex-col justify-end">
-      <dt className="text-[13px] leading-snug text-white/75 sm:text-[15px]">
+      <dt className="text-[13px] leading-snug text-white/90 sm:text-[15px]">
         {shortLabel ? (
           <>
-            <span className="sm:hidden">{shortLabel}</span>
-            <span className="hidden sm:inline">{label}</span>
+            <span aria-hidden className="sm:hidden">
+              {shortLabel}
+            </span>
+            <span className="sr-only sm:not-sr-only">{label}</span>
           </>
         ) : (
           label
@@ -24,7 +26,7 @@ function Kpi({ label, shortLabel, value, suffix }: { label: string; shortLabel?:
       </dt>
       <dd className="display tabular mt-2 flex items-baseline text-[42px] leading-none font-normal sm:text-[64px] xl:text-[76px]">
         {value}
-        {suffix ? <span className="ml-0.5 text-base font-normal text-white/70 sm:text-xl">{suffix}</span> : null}
+        {suffix ? <span className="ml-0.5 text-base font-normal text-white/85 sm:text-xl">{suffix}</span> : null}
       </dd>
     </div>
   );
@@ -53,7 +55,7 @@ export function SummaryCard({
     <section
       aria-labelledby="summary-title"
       className={cn(
-        "relative isolate flex min-h-[300px] flex-col overflow-hidden rounded-card bg-accent p-6 text-white sm:min-h-[340px] sm:p-8",
+        "relative isolate flex min-h-[300px] min-w-0 flex-col overflow-hidden rounded-card bg-accent p-6 text-white sm:min-h-[340px] sm:p-8",
         className,
       )}
     >
@@ -84,14 +86,17 @@ export function SummaryCard({
             value={summary.attendedSessions}
           />
           <Kpi
-            label="EVA promedio actual"
-            shortLabel="EVA promedio"
+            label="Dolor por zona (mapa)"
+            shortLabel="Dolor (mapa)"
             value={summary.avgPain != null ? formatDecimal(summary.avgPain) : "—"}
             suffix={summary.avgPain != null ? "/10" : undefined}
           />
         </dl>
-        <p className="mt-5 max-w-xl text-[15px] leading-relaxed text-white/80">
+        <p className="mt-5 max-w-xl text-[15px] leading-relaxed text-white/90">
           Semana {week.number} · {sessionsText} · {severeText}
+        </p>
+        <p className="mt-1 max-w-xl text-[13px] leading-relaxed text-white/85">
+          Dolor por zona: promedio del dolor actual en el mapa corporal de cada paciente en tratamiento con dolor activo.
         </p>
       </div>
     </section>
