@@ -86,7 +86,7 @@ export function PatientsWelcome() {
           <p className="display tabular mt-1 text-[40px] text-ink">
             7 <span className="text-muted">→</span> 3
           </p>
-          <p className="mt-1 text-[13px] font-medium text-success">57% de mejoría</p>
+          <p className="mt-1 text-[13px] font-medium text-success">57 % menos dolor</p>
         </div>
       </div>
     </Card>

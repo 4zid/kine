@@ -3,6 +3,7 @@ import {
   ArrowRight,
   ArrowUpRight,
   CalendarDays,
+  Clock,
   FileText,
   Mail,
   Minus,
@@ -20,6 +21,7 @@ import { Card, CardHeader } from "@/components/ui/card";
 import { DecorCircles } from "@/components/ui/decor";
 import { PainEvolutionChart } from "@/components/patients/pain-evolution-chart";
 import { PAIN_SERIES as SERIES, PAIN_SERIES_KEYS } from "@/components/patients/pain-series";
+import { improvementText } from "@/components/sessions/session-utils";
 import {
   ageLabel,
   dayParts,
@@ -35,7 +37,7 @@ import { getRegionLabel } from "@/lib/body-regions";
 import { ATTENDANCE, PAIN_STATUS, PAIN_TYPES, STUDY_KINDS } from "@/lib/constants";
 import type { PatientSummaryData } from "@/lib/data/patients-types";
 import type { Patient } from "@/lib/types";
-import { cn, formatDate, formatRelativeDay } from "@/lib/utils";
+import { cn, formatDate, formatRelativeDay, parseDateOnly, toISODate, todayISO } from "@/lib/utils";
 
 // ---------------------------------------------------------------------------
 // Piezas comunes
@@ -78,7 +80,7 @@ function DataList({ items, columns = 2 }: { items: DataItem[]; columns?: 1 | 2 }
       {items.map((item) => (
         <div key={item.label} className={cn("min-w-0", item.wide && columns === 2 && "sm:col-span-2")}>
           <dt className="text-[13px] text-muted">{item.label}</dt>
-          <dd className={cn("mt-0.5 text-[15px] break-words", item.value ? "text-ink" : "text-subtle")}>
+          <dd className={cn("mt-0.5 text-[15px] break-words", item.value ? "text-ink" : "text-muted")}>
             {item.value || "—"}
           </dd>
         </div>
@@ -111,7 +113,7 @@ export function ReasonCard({ patient, className }: { patient: Patient; className
           {patient.consultation_reason}
         </p>
       ) : (
-        <p className="display text-[24px] leading-tight font-normal text-subtle sm:text-[28px]">
+        <p className="display text-[24px] leading-tight font-normal text-muted sm:text-[28px]">
           ¿Qué lo trae a la consulta?{" "}
           <Link href={`${base}/editar#consulta`} className="text-ink underline decoration-line-strong underline-offset-4 hover:decoration-ink">
             Completalo
@@ -163,12 +165,9 @@ export function ProgressCard({
   prescribedSessions: number | null;
   className?: string;
 }) {
-  const { initialPain, currentPain, attendedCount, lastSessionDate } = summary;
+  const { initialPain, currentPain, attendedCount, lastSessionDate, improvementPct: improvement } = summary;
   const base = `/pacientes/${patientId}`;
-  const improvement =
-    initialPain && currentPain && initialPain.value > 0
-      ? Math.round(((initialPain.value - currentPain.value) / initialPain.value) * 100)
-      : null;
+  const improvementLabel = improvementText(improvement);
   const prescribed = prescribedSessions && prescribedSessions > 0 ? prescribedSessions : null;
   const segmentCount = prescribed ? Math.min(prescribed, 20) : 0;
   const filled = prescribed ? Math.round((Math.min(attendedCount, prescribed) / prescribed) * segmentCount) : 0;
@@ -204,30 +203,42 @@ export function ProgressCard({
           <p className="mt-3 max-w-sm text-[15px] leading-relaxed text-white/80">
             Registrá la primera sesión con la EVA al inicio y al final para empezar a medir la evolución.
           </p>
-          <ButtonLink href={`${base}/sesiones/nueva`} variant="inverse" className="mt-6" iconRight={<ArrowRight />}>
+          <ButtonLink
+            href={`${base}/sesiones/nueva`}
+            variant="inverse"
+            className="mt-6 focus-visible:outline-white"
+            iconRight={<ArrowRight />}
+          >
             Nueva sesión
           </ButtonLink>
         </div>
       ) : (
         <div className="mt-auto pt-8">
+          <p className="mb-3 text-[13px] text-white/85">EVA de la sesión (0–10)</p>
           <dl className="flex items-end gap-6 sm:gap-8">
             <div>
-              <dt className="text-[15px] text-white/75">EVA inicial</dt>
+              <dt className="text-[15px] text-white/85">
+                Inicial
+                {initialPain ? <span className="sr-only">, {formatDate(initialPain.date)}</span> : null}
+              </dt>
               <dd className="display tabular mt-1 flex items-baseline text-[56px] leading-none sm:text-[68px]">
                 {initialPain?.value ?? "—"}
-                <span className="ml-1 text-lg text-white/65">/10</span>
+                <span className="ml-1 text-lg text-white/85">/10</span>
               </dd>
             </div>
             <div>
-              <dt className="text-[15px] text-white/75">EVA actual</dt>
+              <dt className="text-[15px] text-white/85">
+                Última sesión
+                {currentPain ? <span className="sr-only">, {formatDate(currentPain.date)}</span> : null}
+              </dt>
               <dd className="display tabular mt-1 flex items-baseline text-[56px] leading-none sm:text-[68px]">
                 {currentPain?.value ?? "—"}
-                <span className="ml-1 text-lg text-white/65">/10</span>
+                <span className="ml-1 text-lg text-white/85">/10</span>
               </dd>
             </div>
           </dl>
 
-          {improvement != null ? (
+          {improvement != null && improvementLabel ? (
             <p className="mt-4 inline-flex h-8 items-center gap-1.5 rounded-full bg-white/15 px-3 text-[13px] font-medium">
               {improvement > 0 ? (
                 <ArrowDownRight className="size-4" aria-hidden />
@@ -236,11 +247,7 @@ export function ProgressCard({
               ) : (
                 <Minus className="size-4" aria-hidden />
               )}
-              {improvement > 0
-                ? `${improvement}% de mejoría`
-                : improvement < 0
-                  ? `${Math.abs(improvement)}% más dolor`
-                  : "Sin cambios en la EVA"}
+              {improvementLabel}
             </p>
           ) : null}
 
@@ -252,23 +259,23 @@ export function ProgressCard({
                     <span key={i} className={cn("h-2 flex-1 rounded-full", i < filled ? "bg-white" : "bg-white/25")} />
                   ))}
                 </div>
-                <p className="mt-2.5 text-[15px] text-white/85">
+                <p className="mt-2.5 text-[15px] text-white/90">
                   <span className="font-medium text-white">
                     {Math.min(attendedCount, prescribed)} de {prescribed}
                   </span>{" "}
-                  sesiones indicadas
+                  sesiones prescriptas
                   {attendedCount > prescribed ? ` · ${attendedCount - prescribed} extra` : ""}
                   {lastSessionDate ? ` · última ${formatRelativeDay(lastSessionDate)}` : ""}
                 </p>
               </>
             ) : (
-              <p className="text-[15px] text-white/85">
+              <p className="text-[15px] text-white/90">
                 <span className="font-medium text-white">{plural(attendedCount, "sesión realizada", "sesiones realizadas")}</span>
                 {lastSessionDate ? ` · última ${formatRelativeDay(lastSessionDate)}` : ""}
                 <br />
                 <Link
                   href={`${base}/historia`}
-                  className="text-[13px] text-white/70 underline decoration-white/40 underline-offset-4 hover:text-white"
+                  className="text-[13px] text-white/85 underline decoration-white/50 underline-offset-4 hover:text-white focus-visible:outline-white"
                 >
                   Indicá las sesiones prescriptas en la historia clínica
                 </Link>
@@ -282,10 +289,18 @@ export function ProgressCard({
 }
 
 // ---------------------------------------------------------------------------
-// Dolor actual
+// Dolor por zona (mapa corporal): el último registro de cada zona activa
 // ---------------------------------------------------------------------------
 const PAIN_TYPE_LABELS = Object.fromEntries(PAIN_TYPES.map((t) => [t.value, t.label]));
 const MAX_ZONES = 6;
+/** A partir de cuántos días sin registros el mapa se considera desactualizado. */
+const STALE_PAIN_DAYS = 30;
+
+function daysSince(value: string): number {
+  return Math.round(
+    (parseDateOnly(todayISO()).getTime() - parseDateOnly(toISODate(new Date(value))).getTime()) / 86_400_000,
+  );
+}
 
 export function PainNowCard({
   patientId,
@@ -301,6 +316,8 @@ export function PainNowCard({
 }) {
   const base = `/pacientes/${patientId}`;
   const shown = zones.slice(0, MAX_ZONES);
+  const updatedAt = zones.reduce<string | null>((latest, z) => (latest == null || z.recorded_at > latest ? z.recorded_at : latest), null);
+  const stale = updatedAt != null && daysSince(updatedAt) > STALE_PAIN_DAYS;
 
   const list =
     zones.length === 0 ? (
@@ -320,7 +337,10 @@ export function PainNowCard({
           const types = z.pain_types.map((t) => PAIN_TYPE_LABELS[t] ?? t).slice(0, 2);
           return (
             <li key={z.id} className="flex items-center gap-3.5 rounded-2xl bg-surface-2 px-3.5 py-3">
-              <PainBadge intensity={z.intensity} size="lg" />
+              <span aria-hidden className="contents">
+                <PainBadge intensity={z.intensity} size="lg" />
+              </span>
+              <span className="sr-only">Dolor {z.intensity} de 10:</span>
               <div className="min-w-0 flex-1">
                 <p className="truncate text-[15px] font-medium text-ink">{getRegionLabel(z.region)}</p>
                 <p className="flex flex-wrap items-center gap-x-2 text-[13px] text-muted">
@@ -329,7 +349,10 @@ export function PainNowCard({
                     {status.label}
                   </span>
                   <span aria-hidden>·</span>
-                  <span>{formatRelativeDay(z.recorded_at)}</span>
+                  <span>
+                    <span className="sr-only">registrado </span>
+                    {formatRelativeDay(z.recorded_at)}
+                  </span>
                   {types.length > 0 ? (
                     <>
                       <span aria-hidden>·</span>
@@ -350,16 +373,38 @@ export function PainNowCard({
   return (
     <Card className={className}>
       <CardHeader
-        title="Dolor actual"
+        title="Dolor por zona"
         description={
-          zones.length > 0
-            ? `${plural(zones.length, "zona", "zonas")} con dolor · máx. ${zones[0].intensity}/10`
-            : "Último registro de cada zona"
+          zones.length > 0 && updatedAt ? (
+            <>
+              Mapa corporal · {plural(zones.length, "zona", "zonas")} · máx. {zones[0].intensity}/10 ·{" "}
+              <span className={cn(stale && "font-medium text-ink-2")}>actualizado {formatRelativeDay(updatedAt)}</span>
+            </>
+          ) : (
+            "Último registro de cada zona del mapa corporal"
+          )
         }
-        action={zones.length > 0 ? <MoreLink href={`${base}/mapa`}>Ver mapa corporal</MoreLink> : null}
+        action={
+          zones.length > 0 ? (
+            <MoreLink href={`${base}/mapa`}>
+              Ver mapa<span className="sr-only"> corporal</span>
+            </MoreLink>
+          ) : null
+        }
       />
+      {stale ? (
+        <p className="mb-4 flex items-start gap-2.5 rounded-2xl bg-surface-2 px-3.5 py-3 text-[13px] leading-relaxed text-ink-2">
+          <Clock className="mt-0.5 size-4 shrink-0 text-muted" aria-hidden />
+          <span>
+            El mapa no se actualiza desde hace más de un mes: puede no reflejar el dolor de hoy.{" "}
+            <Link href={`${base}/mapa`} className="font-medium text-ink underline underline-offset-4 hover:decoration-2">
+              Registrar dolor
+            </Link>
+          </span>
+        </p>
+      ) : null}
       {bodyMapSlot ? (
-        <div className="grid gap-5 sm:grid-cols-[minmax(0,220px)_minmax(0,1fr)] sm:items-start">
+        <div className="grid grid-cols-1 gap-5 sm:grid-cols-[minmax(0,220px)_minmax(0,1fr)] sm:items-start">
           <div className="min-w-0">{bodyMapSlot}</div>
           {list}
         </div>
@@ -386,7 +431,7 @@ export function EvolutionCard({
     <Card className={cn("flex flex-col", className)}>
       <CardHeader
         title="Evolución del dolor"
-        description="EVA por sesión"
+        description="EVA de la sesión, al inicio y al final"
         className="mb-4"
         action={
           evolution.length >= 2 ? (
@@ -471,7 +516,7 @@ export function RecentSessionsCard({
             return (
               <li key={s.id}>
                 <Link
-                  href={`${base}/sesiones`}
+                  href={`${base}/sesiones/${s.id}/editar`}
                   className="flex gap-4 rounded-[20px] p-2 transition-colors hover:bg-surface-2"
                 >
                   <span className="flex w-16 shrink-0 flex-col items-center justify-center rounded-2xl bg-surface-2 py-2.5 text-center">
@@ -499,14 +544,19 @@ export function RecentSessionsCard({
                       ) : null}
                     </span>
                     <span className="mt-1.5 line-clamp-2 block text-sm leading-relaxed text-ink-2">
-                      {excerpt(s.subjective, 180) ?? <span className="text-subtle">Sin notas subjetivas</span>}
+                      {excerpt(s.subjective, 180) ?? <span className="text-muted">Sin notas subjetivas</span>}
                     </span>
                   </span>
                   {s.pain_before != null || s.pain_after != null ? (
-                    <span className="hidden shrink-0 items-center gap-1.5 self-center sm:flex" aria-label={`EVA ${s.pain_before ?? "—"} a ${s.pain_after ?? "—"}`}>
-                      <PainBadge intensity={s.pain_before} size="sm" />
-                      <ArrowRight className="size-3.5 text-subtle" aria-hidden />
-                      <PainBadge intensity={s.pain_after} size="sm" />
+                    <span className="hidden shrink-0 items-center gap-1.5 self-center sm:flex">
+                      <span className="sr-only">
+                        EVA de la sesión: al inicio {s.pain_before ?? "sin registro"}, al final {s.pain_after ?? "sin registro"}
+                      </span>
+                      <span aria-hidden className="flex items-center gap-1.5">
+                        <PainBadge intensity={s.pain_before} size="sm" />
+                        <ArrowRight className="size-3.5 text-muted" />
+                        <PainBadge intensity={s.pain_after} size="sm" />
+                      </span>
                     </span>
                   ) : null}
                 </Link>
@@ -558,7 +608,7 @@ export function StudiesCard({
                 {STUDY_KINDS[latest.kind].label} · {latest.study_date ? formatDate(latest.study_date) : `cargado ${formatRelativeDay(latest.created_at)}`}
               </span>
             </span>
-            <FileText className="size-4 shrink-0 text-subtle" aria-hidden />
+            <FileText className="size-4 shrink-0 text-muted" aria-hidden />
           </Link>
         ) : (
           <Empty
@@ -685,7 +735,7 @@ export function CoverageCard({ patient, className }: { patient: Patient; classNa
         items={[
           { label: "Obra social / prepaga", value: patient.health_insurance },
           { label: "Plan", value: patient.health_insurance_plan },
-          { label: "Nº de afiliado", value: patient.health_insurance_number },
+          { label: "N.º de afiliado", value: patient.health_insurance_number },
           { label: "Médico derivante", value: patient.referring_doctor },
         ]}
       />

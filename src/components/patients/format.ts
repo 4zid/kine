@@ -67,16 +67,33 @@ export function telHref(phone: string): string {
   return `tel:${phone.replace(/[^\d+]/g, "")}`;
 }
 
-export type ClinicalAlert = { key: string; label: string; detail?: string };
+export type ClinicalAlert = {
+  key: string;
+  label: string;
+  detail?: string;
+  /** "precaution" = requiere precaución (tono más suave que una contraindicación). */
+  tone?: "alert" | "precaution";
+};
 
-/** Alertas clínicas relevantes para contraindicaciones (antecedentes con alert, alergias, banderas rojas). */
+/** Marcas de un antecedente: `alert` (contraindicación) y, si el catálogo la define, `precaution`. */
+type ConditionFlags = { alert?: boolean; precaution?: boolean };
+
+/**
+ * Alertas clínicas relevantes para contraindicaciones: antecedentes con `alert`, después los que
+ * requieren precaución (si el catálogo los marca), alergias y banderas rojas.
+ */
 export function clinicalAlerts(history: Pick<ClinicalHistory, "conditions" | "allergies" | "red_flags"> | null): ClinicalAlert[] {
   if (!history) return [];
   const alerts: ClinicalAlert[] = [];
+  const precautions: ClinicalAlert[] = [];
   for (const value of history.conditions ?? []) {
     const condition = CONDITIONS.find((c) => c.value === value);
-    if (condition?.alert) alerts.push({ key: condition.value, label: condition.label });
+    if (!condition) continue;
+    const flags = condition as ConditionFlags;
+    if (flags.alert) alerts.push({ key: condition.value, label: condition.label, tone: "alert" });
+    else if (flags.precaution) precautions.push({ key: condition.value, label: condition.label, tone: "precaution" });
   }
+  alerts.push(...precautions);
   const allergies = history.allergies?.trim();
   if (allergies) alerts.push({ key: "allergies", label: "Alergia", detail: allergies });
   const redFlags = history.red_flags?.trim();

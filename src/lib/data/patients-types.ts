@@ -33,14 +33,16 @@ export const SORT_PARAM: Record<PatientSort, string> = {
   pain: "dolor",
 };
 
+/** Mismas etiquetas que el estado del paciente (PATIENT_STATUS), más "Todos". */
 export const STATUS_FILTER_LABELS: Record<StatusFilter, string> = {
   active: "En tratamiento",
   discharged: "Alta",
-  archived: "Archivados",
+  archived: "Archivado",
   all: "Todos",
 };
 
 export const SORT_LABELS: Record<PatientSort, string> = {
+  /** Última actividad: datos del paciente, sesiones o registros de dolor. */
   recent: "Recientes",
   name: "Nombre",
   pain: "Dolor",
@@ -99,10 +101,14 @@ export type PatientListItem = {
   medical_diagnosis: string | null;
   status: PatientStatus;
   tags: string[];
+  /** Última sesión asistida ya ocurrida (la vista excluye fechas futuras). */
   last_session_date: string | null;
   session_count: number;
+  /** Dolor máximo entre las zonas activas del mapa (último registro de cada zona). */
   max_pain: number | null;
   active_regions: number;
+  /** Fecha del registro de la zona con el dolor máximo (para mostrar qué tan actualizado está). */
+  pain_recorded_at: string | null;
 };
 
 export type StatusCounts = Record<StatusFilter, number>;
@@ -162,22 +168,26 @@ export type SummaryStudy = {
 };
 
 export type PatientSummaryData = {
-  /** Sesiones con asistencia "attended". */
+  /** Sesiones realizadas: asistencia "attended" y fecha ≤ hoy. */
   attendedCount: number;
-  /** Todas las sesiones registradas (incluye ausentes / canceladas). */
+  /** Sesiones registradas con fecha ≤ hoy (incluye ausentes / canceladas). */
   totalSessions: number;
-  /** EVA al inicio de la primera sesión asistida con dato. */
+  /** EVA de la sesión: al inicio de la primera sesión realizada con dato. */
   initialPain: { value: number; date: string } | null;
-  /** EVA al final de la última sesión asistida con dato. */
+  /** EVA de la sesión: la última registrada (al final, o al inicio si no se cargó el final). */
   currentPain: { value: number; date: string } | null;
+  /** Mejoría % según `computeSessionStats` (null si no hay contra qué comparar). */
+  improvementPct: number | null;
   firstSessionDate: string | null;
   lastSessionDate: string | null;
-  /** Últimas sesiones (más reciente primero). */
+  /** Últimas sesiones ya ocurridas (más reciente primero). */
   recentSessions: SummarySession[];
-  /** Evolución del dolor por sesión asistida (orden cronológico). */
+  /** Evolución de la EVA por sesión realizada (orden cronológico). */
   evolution: PainEvolutionPoint[];
-  /** Zonas con dolor no resuelto, de mayor a menor intensidad. */
+  /** Zonas del mapa con dolor activo (no resueltas, intensidad > 0), de mayor a menor intensidad. */
   painZones: SummaryPainZone[];
+  /** Último registro entre las zonas activas (qué tan actualizado está el mapa). */
+  painUpdatedAt: string | null;
   studiesCount: number;
   latestStudy: SummaryStudy | null;
 };

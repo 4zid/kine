@@ -34,17 +34,30 @@ export function PatientsBrowser({
 }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
+  // El input es la fuente de verdad mientras se escribe: la URL llega recortada (trim) y con
+  // retraso, así que nunca debe pisar lo que el usuario está tipeando.
   const [query, setQuery] = useState(params.q);
   const [syncedQ, setSyncedQ] = useState(params.q);
+  /** Búsquedas que pidió este mismo input y todavía no llegaron a la URL (en orden). */
+  const [requestedQs, setRequestedQs] = useState<string[]>([]);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // Si la búsqueda cambia desde afuera (p. ej. "Limpiar búsqueda"), reflejarla en el input.
+  // Solo si la búsqueda cambia desde afuera ("Limpiar búsqueda", atrás/adelante), reflejarla en
+  // el input. Si es una que pidió este input (aunque haya otras más nuevas en camino), no tocarlo.
   if (params.q !== syncedQ) {
     setSyncedQ(params.q);
-    setQuery(params.q);
+    const index = requestedQs.indexOf(params.q);
+    if (index >= 0) {
+      setRequestedQs(requestedQs.slice(index + 1));
+    } else {
+      setQuery(params.q);
+      setRequestedQs([]);
+    }
   }
 
   const navigate = (next: Partial<PatientListParams>) => {
+    const nextQ = next.q;
+    if (nextQ !== undefined && nextQ !== params.q) setRequestedQs((prev) => [...prev.slice(-9), nextQ]);
     const href = patientListHref({ ...params, page: 1, ...next });
     startTransition(() => router.replace(href, { scroll: false }));
   };
@@ -92,7 +105,7 @@ export function PatientsBrowser({
             role="search"
             onSubmit={(e) => {
               e.preventDefault();
-              const value = query.trim();
+              const value = query.trim().slice(0, 80);
               if (value !== params.q) navigate({ q: value });
             }}
             className="relative min-w-0 flex-1 xl:w-[300px] xl:flex-none"
@@ -117,11 +130,11 @@ export function PatientsBrowser({
               autoComplete="off"
               spellCheck={false}
               maxLength={80}
-              className="h-11 w-full rounded-full bg-surface pr-11 pl-11 text-[15px] text-ink shadow-inset outline-none transition-shadow placeholder:text-subtle focus:shadow-[0_0_0_1.5px_var(--color-ink)] [&::-webkit-search-cancel-button]:appearance-none"
+              className="h-11 w-full rounded-full bg-surface pr-12 pl-11 text-base text-ink shadow-inset outline-none transition-shadow placeholder:text-muted focus:shadow-[0_0_0_1.5px_var(--color-ink)] sm:text-[15px] [&::-webkit-search-cancel-button]:appearance-none"
             />
-            <span className="absolute top-1/2 right-1.5 -translate-y-1/2">
+            <span className="absolute top-1/2 right-0.5 -translate-y-1/2">
               {isPending ? (
-                <span className="inline-flex size-8 items-center justify-center text-muted" aria-hidden>
+                <span className="inline-flex size-10 items-center justify-center text-muted" aria-hidden>
                   <Spinner />
                 </span>
               ) : query ? (
@@ -132,7 +145,7 @@ export function PatientsBrowser({
                     inputRef.current?.focus();
                   }}
                   aria-label="Borrar búsqueda"
-                  className="inline-flex size-8 items-center justify-center rounded-full text-muted transition-colors hover:bg-surface-2 hover:text-ink"
+                  className="inline-flex size-10 items-center justify-center rounded-full text-muted transition-colors hover:bg-surface-2 hover:text-ink"
                 >
                   <X className="size-4" />
                 </button>

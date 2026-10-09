@@ -46,49 +46,54 @@ export function PatientSummary({
   const showSteps = isNew || (!done.session && !(done.history && done.pain));
 
   return (
-    <div className="animate-fade-up grid gap-4 md:grid-cols-2 lg:gap-5 xl:grid-cols-12 [&>*]:min-w-0">
-      {showSteps ? (
-        <NextStepsCard
+    <section aria-labelledby="patient-summary-title" className="flex flex-col gap-4 lg:gap-5">
+      <h2 id="patient-summary-title" className="display text-2xl font-medium text-ink">
+        Resumen
+      </h2>
+      <div className="animate-fade-up grid grid-cols-1 gap-4 md:grid-cols-2 lg:gap-5 xl:grid-cols-12 [&>*]:min-w-0">
+        {showSteps ? (
+          <NextStepsCard
+            patientId={patient.id}
+            firstName={patient.first_name}
+            done={done}
+            tone={isNew ? "welcome" : "subtle"}
+            className="md:col-span-2 xl:col-span-12"
+          />
+        ) : null}
+
+        <ReasonCard patient={patient} className="md:col-span-2 xl:col-span-7" />
+        <ProgressCard
           patientId={patient.id}
-          firstName={patient.first_name}
-          done={done}
-          tone={isNew ? "welcome" : "subtle"}
-          className="md:col-span-2 xl:col-span-12"
+          summary={summary}
+          prescribedSessions={history?.prescribed_sessions ?? null}
+          className="md:col-span-2 xl:col-span-5"
         />
-      ) : null}
 
-      <ReasonCard patient={patient} className="md:col-span-2 xl:col-span-7" />
-      <ProgressCard
-        patientId={patient.id}
-        summary={summary}
-        prescribedSessions={history?.prescribed_sessions ?? null}
-        className="md:col-span-2 xl:col-span-5"
-      />
+        <PainNowCard
+          patientId={patient.id}
+          zones={summary.painZones}
+          bodyMapSlot={bodyMapSlot}
+          className="md:col-span-2 xl:col-span-7"
+        />
+        <EvolutionCard patientId={patient.id} evolution={summary.evolution} className="md:col-span-2 xl:col-span-5" />
 
-      <PainNowCard
-        patientId={patient.id}
-        zones={summary.painZones}
-        bodyMapSlot={bodyMapSlot}
-        className="md:col-span-2 xl:col-span-7"
-      />
-      <EvolutionCard patientId={patient.id} evolution={summary.evolution} className="md:col-span-2 xl:col-span-5" />
+        <RecentSessionsCard
+          patientId={patient.id}
+          sessions={summary.recentSessions}
+          totalSessions={summary.totalSessions}
+          className="md:col-span-2 xl:col-span-7"
+        />
+        <div className="grid grid-cols-1 gap-4 md:col-span-2 md:grid-cols-2 lg:gap-5 xl:col-span-5 xl:grid-cols-1 [&>*]:min-w-0">
+          <StudiesCard patientId={patient.id} count={summary.studiesCount} latest={summary.latestStudy} />
+          <NotesCard patient={patient} />
+        </div>
 
-      <RecentSessionsCard
-        patientId={patient.id}
-        sessions={summary.recentSessions}
-        totalSessions={summary.totalSessions}
-        className="md:col-span-2 xl:col-span-7"
-      />
-      <div className="grid gap-4 md:col-span-2 md:grid-cols-2 lg:gap-5 xl:col-span-5 xl:grid-cols-1 [&>*]:min-w-0">
-        <StudiesCard patientId={patient.id} count={summary.studiesCount} latest={summary.latestStudy} />
-        <NotesCard patient={patient} />
+        <PersonalDataCard patient={patient} className="md:col-span-2 xl:col-span-7" />
+        <div className="grid grid-cols-1 gap-4 md:col-span-2 md:grid-cols-2 lg:gap-5 xl:col-span-5 xl:grid-cols-1 [&>*]:min-w-0">
+          <CoverageCard patient={patient} />
+          <EmergencyContactCard patient={patient} />
+        </div>
       </div>
-
-      <PersonalDataCard patient={patient} className="md:col-span-2 xl:col-span-7" />
-      <div className="grid gap-4 md:col-span-2 md:grid-cols-2 lg:gap-5 xl:col-span-5 xl:grid-cols-1 [&>*]:min-w-0">
-        <CoverageCard patient={patient} />
-        <EmergencyContactCard patient={patient} />
-      </div>
-    </div>
+    </section>
   );
 }

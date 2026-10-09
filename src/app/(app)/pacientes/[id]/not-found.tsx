@@ -10,11 +10,11 @@ export default function PatientNotFound() {
       <span className="mx-auto inline-flex size-16 items-center justify-center rounded-full bg-surface-2 text-ink-2">
         <UserRoundX className="size-7" strokeWidth={1.6} aria-hidden />
       </span>
-      <p className="mt-6 text-sm font-medium tracking-[0.14em] text-subtle uppercase">Error 404</p>
+      <p className="mt-6 text-sm font-medium tracking-[0.14em] text-muted uppercase">Error 404</p>
       <h1 className="display mt-3 text-[34px] text-ink sm:text-[44px]">
         <span className="font-light text-muted">No encontramos</span>
         <br />
-        <span className="font-medium">este paciente</span>
+        <span className="font-medium">a este paciente</span>
       </h1>
       <p className="mx-auto mt-4 max-w-md text-[15px] leading-relaxed text-muted">
         Puede que se haya eliminado o que el enlace no sea correcto. Solo ves los pacientes que cargaste en tu cuenta.

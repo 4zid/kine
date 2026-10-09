@@ -21,13 +21,12 @@ export async function generateMetadata({ params }: LayoutProps<"/pacientes/[id]"
  */
 export default async function PatientLayout({ children, params }: LayoutProps<"/pacientes/[id]">) {
   const { id } = await params;
-  const patient = await getPatient(id);
+  // En paralelo (ambas deduplicadas con cache: las páginas las vuelven a pedir sin costo).
+  const [patient, history] = await Promise.all([getPatient(id), getClinicalHistory(id)]);
   if (!patient) return children;
 
-  const history = await getClinicalHistory(id);
-
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-4 sm:gap-6">
       <PatientHeader patient={patient} />
       <ClinicalAlerts alerts={clinicalAlerts(history)} historyHref={`/pacientes/${id}/historia`} />
       <PatientTabs patientId={id} />
