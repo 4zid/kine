@@ -6,7 +6,7 @@ function plural(n: number, one: string, many: string) {
   return `${n} ${n === 1 ? one : many}`;
 }
 
-/** % de asistencia de la semana + barras por día (como "Constancia" de daily). */
+/** % de asistencia de la semana + barras por día (como "Constancia" de daily). Solo cuenta días hasta hoy. */
 export function AttendanceCard({
   attendance,
   days,
@@ -21,7 +21,7 @@ export function AttendanceCard({
 
   const caption =
     total === 0 && attendance.cancelled === 0
-      ? "Todavía no hay turnos registrados en esta semana."
+      ? "Todavía no hay sesiones registradas en esta semana."
       : [
           `${plural(daysAttended, "día", "días")} con pacientes atendidos`,
           attendance.absent > 0 ? plural(attendance.absent, "ausencia", "ausencias") : "sin ausencias",
@@ -33,7 +33,10 @@ export function AttendanceCard({
           .join(" · ");
 
   return (
-    <section aria-labelledby="attendance-title" className={cn("flex flex-col rounded-card bg-surface p-6 sm:p-8", className)}>
+    <section
+      aria-labelledby="attendance-title"
+      className={cn("flex min-w-0 flex-col rounded-card bg-surface p-6 sm:p-8", className)}
+    >
       <h2 id="attendance-title" className="display text-[26px] font-medium text-ink">
         Asistencia
       </h2>
@@ -41,18 +44,18 @@ export function AttendanceCard({
       <div className="mt-5 flex flex-wrap items-end justify-between gap-3">
         <p className="display tabular text-[72px] leading-[0.9] font-normal text-ink sm:text-[88px]">
           {attendance.rate != null ? (
-            `${attendance.rate}%`
+            `${attendance.rate} %`
           ) : (
             <>
               <span aria-hidden className="text-line-strong">
-                –%
+                –&#8239;%
               </span>
               <span className="sr-only">Sin datos</span>
             </>
           )}
         </p>
         <Badge className="mb-1 h-10 px-4 text-sm">
-          {total > 0 ? `${attendance.attended} de ${plural(total, "turno", "turnos")}` : "Sin turnos"}
+          {total > 0 ? `${attendance.attended} de ${plural(total, "sesión", "sesiones")}` : "Sin sesiones"}
         </Badge>
       </div>
 
@@ -69,11 +72,13 @@ export function AttendanceCard({
             <span
               className={cn(
                 "text-[13px] sm:text-[15px]",
-                d.isToday ? "font-medium text-ink" : d.isFuture ? "text-subtle" : "text-muted",
+                d.isToday ? "font-medium text-ink" : "text-muted",
               )}
             >
               {d.label}
-              <span className="sr-only">: {d.attended ? "con pacientes atendidos" : "sin pacientes atendidos"}</span>
+              <span className="sr-only">
+                : {d.isFuture ? "todavía no llegó" : d.attended ? "con pacientes atendidos" : "sin pacientes atendidos"}
+              </span>
             </span>
           </li>
         ))}

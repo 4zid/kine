@@ -14,9 +14,8 @@ export const PROFESSIONAL_LIMITS = {
   province: 100,
 } as const;
 
-export const PASSWORD_MIN = 8;
-/** Límite práctico de bcrypt (Supabase Auth). */
-export const PASSWORD_MAX = 72;
+/** Mismas reglas de contraseña que el registro y la recuperación. */
+export { PASSWORD_MAX, PASSWORD_MIN } from "@/components/auth/password-rules";
 
 /** Datos del profesional que usa la pantalla de ajustes. */
 export type SettingsProfessional = Pick<

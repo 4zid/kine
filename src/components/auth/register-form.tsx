@@ -1,13 +1,15 @@
 "use client";
 
 import { ArrowRight, ChevronLeft, PencilLine, ShieldCheck } from "lucide-react";
+import dynamic from "next/dynamic";
 import Link from "next/link";
 import { startTransition, useActionState, useEffect, useRef, useState, type FormEvent } from "react";
 import { signUp, type SignUpResult } from "@/app/(auth)/registro/actions";
+import { guardAction } from "@/components/auth/action-guard";
 import { RegisterAside } from "@/components/auth/auth-asides";
 import { AuthHeading, AuthSplitLayout, TopLink } from "@/components/auth/auth-split-layout";
 import { FormAlert } from "@/components/auth/form-alert";
-import { LegalDialog, type LegalDoc } from "@/components/auth/legal-dialog";
+import type { LegalDoc } from "@/components/auth/legal-dialog";
 import { PasswordInput } from "@/components/auth/password-input";
 import { PasswordStrength } from "@/components/auth/password-strength";
 import {
@@ -72,6 +74,14 @@ const STEPS: Record<Step, { name: string; title: [string, string]; description: 
 const SPECIALTY_OPTIONS = SPECIALTIES.map((s, i) => ({ ...s, dot: DOT_COLORS[i % DOT_COLORS.length] }));
 const STEP_SCHEMAS = { 1: registerStep1Schema, 2: registerStep2RefinedSchema, 3: registerStep3Schema } as const;
 const initialState: ActionState<SignUpResult> = { ok: false };
+const submitSignUp = guardAction(signUp);
+
+// El texto legal solo se descarga si la persona abre el diálogo.
+const LegalDialog = dynamic(() => import("@/components/auth/legal-dialog").then((m) => m.LegalDialog), { ssr: false });
+
+function scrollBehavior(): ScrollBehavior {
+  return window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth";
+}
 
 function fieldId(field: RegisterField) {
   return `reg-${field}`;
@@ -102,7 +112,13 @@ export function RegisterForm({
   const [direction, setDirection] = useState<1 | -1>(1);
   const [errors, setErrors] = useState<Errors>({});
   const [legal, setLegal] = useState<LegalDoc | null>(null);
-  const [state, formAction, isPending] = useActionState(signUp, initialState);
+  // Una vez abierto queda montado: el <dialog> nativo devuelve el foco al botón al cerrarse.
+  const [legalMounted, setLegalMounted] = useState(false);
+  const openLegal = (doc: LegalDoc) => {
+    setLegalMounted(true);
+    setLegal(doc);
+  };
+  const [state, formAction, isPending] = useActionState(submitSignUp, initialState);
   const [handledState, setHandledState] = useState(state);
   const [emailTaken, setEmailTaken] = useState(false);
 
@@ -141,7 +157,7 @@ export function RegisterForm({
         ? form.querySelector<HTMLElement>("[data-step-fields] input:not([type=hidden]), [data-step-fields] select")
         : document.getElementById(fieldId(target));
     el?.focus({ preventScroll: true });
-    if (form.getBoundingClientRect().top < 0) form.scrollIntoView({ block: "start", behavior: "smooth" });
+    if (form.getBoundingClientRect().top < 0) form.scrollIntoView({ block: "start", behavior: scrollBehavior() });
   }, [focusRequest]);
 
   const set = <K extends RegisterField>(key: K, value: RegisterValues[K]) => {
@@ -273,7 +289,7 @@ export function RegisterForm({
                       value={values.first_name}
                       onChange={(e) => set("first_name", e.target.value)}
                       aria-invalid={invalid("first_name")}
-                      placeholder="Martina"
+                      placeholder="Tu nombre"
                     />
                   </Field>
                   <Field label="Apellido" htmlFor={fieldId("last_name")} error={err("last_name")}>
@@ -285,7 +301,7 @@ export function RegisterForm({
                       value={values.last_name}
                       onChange={(e) => set("last_name", e.target.value)}
                       aria-invalid={invalid("last_name")}
-                      placeholder="Ruiz"
+                      placeholder="Tu apellido"
                     />
                   </Field>
                 </div>
@@ -348,7 +364,7 @@ export function RegisterForm({
                     value={values.phone}
                     onChange={(e) => set("phone", e.target.value)}
                     aria-invalid={invalid("phone")}
-                    placeholder="11 5555-5555"
+                    placeholder="Ej.: 11 5555-1234"
                   />
                 </Field>
               </>
@@ -499,58 +515,59 @@ export function RegisterForm({
                 </div>
 
                 <div className="flex flex-col gap-2">
-                  <label
-                    htmlFor={fieldId("accept_terms")}
+                  <div
                     className={cn(
-                      "flex cursor-pointer items-start gap-3 rounded-panel bg-surface-2 p-4 transition-shadow",
+                      "rounded-panel bg-surface-2 p-4 transition-shadow",
                       errors.accept_terms && "shadow-[0_0_0_1.5px_var(--color-danger)]",
                     )}
                   >
-                    <input
-                      id={fieldId("accept_terms")}
-                      type="checkbox"
-                      name="accept_terms"
-                      checked={values.accept_terms}
-                      onChange={(e) => set("accept_terms", e.target.checked)}
-                      aria-invalid={invalid("accept_terms")}
-                      className="peer sr-only"
-                    />
-                    <span
-                      aria-hidden
-                      className="mt-0.5 inline-flex size-6 shrink-0 items-center justify-center rounded-lg bg-surface text-transparent shadow-[inset_0_0_0_1.5px_var(--color-line-strong)] transition-colors peer-checked:bg-ink peer-checked:text-white peer-checked:shadow-none peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-ink"
+                    <label htmlFor={fieldId("accept_terms")} className="flex cursor-pointer items-start gap-3">
+                      <input
+                        id={fieldId("accept_terms")}
+                        type="checkbox"
+                        name="accept_terms"
+                        checked={values.accept_terms}
+                        onChange={(e) => set("accept_terms", e.target.checked)}
+                        aria-invalid={invalid("accept_terms")}
+                        aria-describedby={errors.accept_terms ? `${fieldId("accept_terms")}-error` : "reg-legal-links"}
+                        className="peer sr-only"
+                      />
+                      <span
+                        aria-hidden
+                        className="mt-0.5 inline-flex size-6 shrink-0 items-center justify-center rounded-lg bg-surface text-transparent shadow-[inset_0_0_0_1.5px_var(--color-line-strong)] transition-colors peer-checked:bg-ink peer-checked:text-white peer-checked:shadow-none peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-ink"
+                      >
+                        <svg viewBox="0 0 16 16" className="size-3.5" fill="none" stroke="currentColor" strokeWidth="2.4">
+                          <path d="m3.5 8.5 3 3 6-7" strokeLinecap="round" strokeLinejoin="round" />
+                        </svg>
+                      </span>
+                      <span className="pt-0.5 text-[14px] leading-relaxed text-ink-2">
+                        Leí y acepto los Términos y condiciones y la Política de privacidad.
+                      </span>
+                    </label>
+                    <p
+                      id="reg-legal-links"
+                      className="mt-1 flex flex-wrap items-center gap-x-2 pl-9 text-[13px] leading-relaxed text-muted"
                     >
-                      <svg viewBox="0 0 16 16" className="size-3.5" fill="none" stroke="currentColor" strokeWidth="2.4">
-                        <path d="m3.5 8.5 3 3 6-7" strokeLinecap="round" strokeLinejoin="round" />
-                      </svg>
-                    </span>
-                    <span className="text-[14px] leading-relaxed text-ink-2">
-                      Leí y acepto los{" "}
+                      <span>Leer:</span>
                       <button
                         type="button"
-                        onClick={(e) => {
-                          e.preventDefault();
-                          setLegal("terms");
-                        }}
-                        className="font-medium text-ink underline underline-offset-4"
+                        onClick={() => openLegal("terms")}
+                        className="inline-flex min-h-10 items-center font-medium text-ink underline underline-offset-4"
                       >
                         Términos y condiciones
-                      </button>{" "}
-                      y la{" "}
+                      </button>
+                      <span aria-hidden>·</span>
                       <button
                         type="button"
-                        onClick={(e) => {
-                          e.preventDefault();
-                          setLegal("privacy");
-                        }}
-                        className="font-medium text-ink underline underline-offset-4"
+                        onClick={() => openLegal("privacy")}
+                        className="inline-flex min-h-10 items-center font-medium text-ink underline underline-offset-4"
                       >
                         Política de privacidad
                       </button>
-                      .
-                    </span>
-                  </label>
+                    </p>
+                  </div>
                   {errors.accept_terms ? (
-                    <p role="alert" className="text-[13px] text-danger">
+                    <p id={`${fieldId("accept_terms")}-error`} role="alert" className="text-[13px] text-danger">
                       {errors.accept_terms}
                     </p>
                   ) : null}
@@ -593,7 +610,7 @@ export function RegisterForm({
         </div>
       </form>
 
-      <LegalDialog doc={legal} onClose={() => setLegal(null)} />
+      {legalMounted ? <LegalDialog doc={legal} onClose={() => setLegal(null)} /> : null}
     </AuthSplitLayout>
   );
 }

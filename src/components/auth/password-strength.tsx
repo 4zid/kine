@@ -1,4 +1,4 @@
-import { passwordStrength, PASSWORD_MIN } from "@/components/auth/schemas";
+import { passwordStrength, PASSWORD_MIN } from "@/components/auth/password-rules";
 import { cn } from "@/lib/utils";
 
 /** Medidor de fortaleza de contraseña (4 segmentos + etiqueta). */

@@ -4,11 +4,12 @@ import { cn } from "@/lib/utils";
 
 type Tone = "error" | "success" | "info" | "warning";
 
+// Texto con los tonos "-ink" (contraste AA sobre los fondos -50).
 const tones: Record<Tone, { box: string; icon: ReactNode }> = {
-  error: { box: "bg-danger-50 text-danger", icon: <AlertCircle /> },
+  error: { box: "bg-danger-50 text-danger-ink", icon: <AlertCircle /> },
   success: { box: "bg-success-50 text-brand-700", icon: <CheckCircle2 /> },
   info: { box: "bg-surface-2 text-ink-2", icon: <Info /> },
-  warning: { box: "bg-warning-50 text-warning", icon: <TriangleAlert /> },
+  warning: { box: "bg-warning-50 text-warning-ink", icon: <TriangleAlert /> },
 };
 
 /** Aviso dentro de formularios (errores generales, confirmaciones, links vencidos). */

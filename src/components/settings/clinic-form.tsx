@@ -14,10 +14,10 @@ export function ClinicForm({ professional, action }: { professional: SettingsPro
     city: professional.city ?? "",
     province: professional.province ?? "",
   };
-  const { values, set, errors, formAction, pending, dirty, discard } = useSettingsForm(initial, action);
+  const { values, set, errors, onSubmit, pending, dirty, discard } = useSettingsForm(initial, action);
 
   return (
-    <form action={formAction} noValidate>
+    <form onSubmit={onSubmit} noValidate>
       <SettingsSection
         id="consultorio"
         icon={<Building strokeWidth={1.7} />}

@@ -1,9 +1,9 @@
 "use client";
 
 import { ArrowRight } from "lucide-react";
-import Link from "next/link";
 import { useActionState, useState, type FormEvent } from "react";
-import { updatePassword } from "@/app/(auth)/restablecer/actions";
+import { restartRecovery, updatePassword, type ResetPasswordResult } from "@/app/(auth)/restablecer/actions";
+import { guardAction } from "@/components/auth/action-guard";
 import { AuthHeading } from "@/components/auth/auth-split-layout";
 import { FormAlert } from "@/components/auth/form-alert";
 import { PasswordInput } from "@/components/auth/password-input";
@@ -11,13 +11,16 @@ import { PasswordStrength } from "@/components/auth/password-strength";
 import { resetPasswordSchema, toFieldErrors } from "@/components/auth/schemas";
 import { Field } from "@/components/ui/field";
 import { SubmitButton } from "@/components/ui/submit-button";
-import { initialActionState } from "@/lib/types";
+import type { ActionState } from "@/lib/types";
 
 type Errors = Partial<Record<"password" | "confirm", string>>;
 
+const initialState: ActionState<ResetPasswordResult> = { ok: false };
+const submitNewPassword = guardAction(updatePassword);
+
 /** Formulario para elegir una contraseña nueva (después del link de recuperación). */
 export function ResetPasswordForm({ email }: { email?: string | null }) {
-  const [state, formAction, isPending] = useActionState(updatePassword, initialActionState);
+  const [state, formAction, isPending] = useActionState(submitNewPassword, initialState);
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [errors, setErrors] = useState<Errors>({});
@@ -38,7 +41,7 @@ export function ResetPasswordForm({ email }: { email?: string | null }) {
     }
   };
 
-  const sessionExpired = !state.ok && state.message?.startsWith("Tu sesión expiró");
+  const linkExpired = !state.ok && Boolean(state.data?.linkExpired);
 
   return (
     <div>
@@ -60,10 +63,15 @@ export function ResetPasswordForm({ email }: { email?: string | null }) {
         <FormAlert
           className="mt-6"
           action={
-            sessionExpired ? (
-              <Link href="/recuperar" className="text-sm font-medium text-ink underline underline-offset-4">
-                Pedir un link nuevo
-              </Link>
+            linkExpired ? (
+              <form action={restartRecovery}>
+                <button
+                  type="submit"
+                  className="inline-flex h-10 items-center text-sm font-medium text-ink underline underline-offset-4"
+                >
+                  Pedir un link nuevo
+                </button>
+              </form>
             ) : undefined
           }
         >

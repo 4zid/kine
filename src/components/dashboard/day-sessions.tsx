@@ -24,7 +24,7 @@ function SessionRow({ session, index }: { session: DaySession; index: number }) 
   return (
     <li
       className={cn(
-        "group relative grid animate-fade-up grid-cols-[1fr_auto] items-center gap-x-3 gap-y-3 rounded-panel bg-surface-2 p-4 transition-colors hover:bg-surface-3/70 sm:grid-cols-[78px_1fr_auto] sm:gap-x-5 sm:p-5",
+        "group relative grid min-w-0 animate-fade-up grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-3 rounded-panel bg-surface-2 p-4 transition-colors hover:bg-surface-3/70 sm:grid-cols-[78px_minmax(0,1fr)_auto] sm:gap-x-5 sm:p-5",
         hasMeta
           ? "[grid-template-areas:'time_badge'_'name_name'_'meta_meta'] sm:[grid-template-areas:'time_name_badge'_'time_meta_meta']"
           : "[grid-template-areas:'time_badge'_'name_name'] sm:[grid-template-areas:'time_name_badge']",
@@ -52,15 +52,17 @@ function SessionRow({ session, index }: { session: DaySession; index: number }) 
       </Badge>
 
       <Link
-        href={`/pacientes/${session.patientId}/sesiones`}
+        href={session.href}
         className="flex min-w-0 items-center gap-2.5 font-medium text-ink outline-none [grid-area:name] after:absolute after:inset-0 after:rounded-panel focus-visible:after:shadow-[0_0_0_2px_var(--color-ink)]"
       >
         <Avatar person={{ id: session.patientId, ...session.patientName }} size="sm" />
-        <span className="truncate text-[16px]">{name}</span>
+        <span className="min-w-0 truncate text-[16px]">{name}</span>
         <span className="sr-only">
           , {time ? `${time} h` : "sin horario"}, {attendance.label.toLowerCase()}
-          {hasPain ? `, dolor ${session.painBefore ?? "sin dato"} antes y ${session.painAfter ?? "sin dato"} después` : ""}.
-          Ver sesiones del paciente
+          {hasPain
+            ? `, EVA de la sesión ${session.painBefore ?? "sin dato"} antes y ${session.painAfter ?? "sin dato"} después`
+            : ""}
+          . Abrir la sesión
         </span>
       </Link>
 
@@ -87,8 +89,8 @@ function SessionRow({ session, index }: { session: DaySession; index: number }) 
             <span aria-hidden />
           )}
           {hasPain ? (
-            <div aria-hidden className="flex items-center gap-1.5">
-              <span className="mr-0.5 text-xs font-medium tracking-wide text-subtle">EVA</span>
+            <div aria-hidden className="flex items-center gap-1.5" title="EVA de la sesión: antes → después">
+              <span className="mr-0.5 text-xs font-medium tracking-wide text-muted">EVA sesión</span>
               <PainBadge intensity={session.painBefore} size="sm" />
               <ArrowRight className="size-3.5 text-subtle" />
               <PainBadge intensity={session.painAfter} size="sm" />
@@ -100,7 +102,7 @@ function SessionRow({ session, index }: { session: DaySession; index: number }) 
   );
 }
 
-/** Lista de sesiones del día seleccionado. */
+/** Lista de sesiones del día seleccionado (cada fila abre la sesión para completar su evolución). */
 export function DaySessions({
   sessions,
   selectedDay,
@@ -119,7 +121,7 @@ export function DaySessions({
   const attended = sessions.filter((s) => s.attendance === "attended").length;
 
   return (
-    <section aria-labelledby="day-sessions-title" className={cn("rounded-card bg-surface", className)}>
+    <section aria-labelledby="day-sessions-title" className={cn("min-w-0 rounded-card bg-surface", className)}>
       <div className="flex flex-wrap items-end justify-between gap-3 px-6 pt-6 pb-5 sm:px-8 sm:pt-7">
         <div className="min-w-0">
           <p className="text-[15px] text-muted">
@@ -149,13 +151,13 @@ export function DaySessions({
           <EmptyState
             className="rounded-panel bg-surface-2 py-12"
             icon={<CalendarDays strokeWidth={1.6} />}
-            title={isFuture ? "Día libre, por ahora" : "Sin sesiones este día"}
+            title={isFuture ? "Todavía no llegó este día" : "Sin sesiones este día"}
             description={
               isFuture
-                ? "Las sesiones se registran desde la ficha de cada paciente, el día que lo atendés."
+                ? "Las sesiones se registran después de atender al paciente, desde su ficha."
                 : hasActivePatients
-                  ? "Cuando cargues una sesión desde la ficha de un paciente, va a aparecer acá."
-                  : "Agregá un paciente y registrá su primera sesión para verla acá."
+                  ? "Cuando registres la sesión de un paciente desde su ficha, va a aparecer acá."
+                  : "Agregá un paciente y, después de atenderlo, registrá su primera sesión."
             }
             action={
               hasActivePatients ? (
