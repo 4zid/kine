@@ -16,14 +16,17 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
   );
 }
 
-/** Canal para pedidos sobre datos (configurable con NEXT_PUBLIC_CONTACT_EMAIL). */
-function Contact() {
+/** "a contacto@…" o "al soporte de kine" (canal configurable con NEXT_PUBLIC_CONTACT_EMAIL). */
+function ContactTo() {
   return CONTACT_EMAIL ? (
-    <a href={`mailto:${CONTACT_EMAIL}`} className="font-medium text-ink underline underline-offset-4">
-      {CONTACT_EMAIL}
-    </a>
+    <>
+      a{" "}
+      <a href={`mailto:${CONTACT_EMAIL}`} className="font-medium text-ink underline underline-offset-4">
+        {CONTACT_EMAIL}
+      </a>
+    </>
   ) : (
-    <>el soporte de kine</>
+    <>al soporte de kine</>
   );
 }
 
@@ -62,7 +65,7 @@ function TermsContent() {
       </Section>
       <Section title="Cierre de la cuenta">
         <p>
-          Podés pedir el cierre de tu cuenta y una copia de tus registros escribiendo a <Contact />. Al cerrarla, los datos
+          Podés pedir el cierre de tu cuenta y una copia de tus registros escribiendo <ContactTo />. Al cerrarla, los datos
           clínicos se conservan durante el plazo que exige la ley, sin que nadie más pueda verlos.
         </p>
       </Section>
@@ -134,7 +137,7 @@ function PrivacyContent() {
       <Section title="Tus derechos">
         <p>
           Podés pedir el acceso, la rectificación, la actualización o la supresión de tus datos (arts. 14 a 16 de la Ley
-          25.326) escribiendo a <Contact />. Si un paciente quiere ejercerlos sobre su información de salud, te lo pide a
+          25.326) escribiendo <ContactTo />. Si un paciente quiere ejercerlos sobre su información de salud, te lo pide a
           vos como responsable de su historia clínica; la supresión de esos datos está limitada por el deber de
           conservación.
         </p>

@@ -49,7 +49,7 @@ export function VerifyEmailPanel({ email }: { email: string }) {
       <ol className="mt-8 space-y-3 rounded-panel bg-surface-2 p-5 text-[14px] leading-relaxed text-ink-2">
         {[
           "Abrí el email que te mandamos desde kine.",
-          "Tocá “Confirmar email”. Si podés, hacelo desde este mismo dispositivo.",
+          "Tocá “Confirmar email”. Si podés, abrilo en este mismo navegador.",
           "¿No llegó? Revisá spam o promociones, o pedí que te lo reenviemos.",
         ].map((item, i) => (
           <li key={item} className="flex gap-3">

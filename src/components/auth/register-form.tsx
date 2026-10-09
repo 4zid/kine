@@ -544,16 +544,19 @@ export function RegisterForm({
                         Leí y acepto los Términos y condiciones y la Política de privacidad.
                       </span>
                     </label>
-                    <p id="reg-legal-links" className="mt-1 pl-9 text-[13px] leading-relaxed text-muted">
-                      Leer:{" "}
+                    <p
+                      id="reg-legal-links"
+                      className="mt-1 flex flex-wrap items-center gap-x-2 pl-9 text-[13px] leading-relaxed text-muted"
+                    >
+                      <span>Leer:</span>
                       <button
                         type="button"
                         onClick={() => openLegal("terms")}
                         className="inline-flex min-h-10 items-center font-medium text-ink underline underline-offset-4"
                       >
                         Términos y condiciones
-                      </button>{" "}
-                      ·{" "}
+                      </button>
+                      <span aria-hidden>·</span>
                       <button
                         type="button"
                         onClick={() => openLegal("privacy")}

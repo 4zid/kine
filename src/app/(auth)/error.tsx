@@ -12,7 +12,7 @@ export default function AuthError({ error, retry }: { error: Error & { digest?: 
 
   return (
     <div className="flex min-h-dvh items-center justify-center p-4">
-      <div className="w-full max-w-md rounded-card bg-surface p-8 text-center shadow-soft">
+      <div role="alert" className="w-full max-w-md rounded-card bg-surface p-8 text-center shadow-soft">
         <Logo className="justify-center" />
         <h1 className="display mt-8 text-[30px] text-ink">
           <span className="block font-normal">Algo no salió</span>
