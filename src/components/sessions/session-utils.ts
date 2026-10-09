@@ -13,8 +13,13 @@ import type { Attendance, TreatmentSession } from "@/lib/types";
 // ---------------------------------------------------------------------------
 export const SESSION_TEXT_MAX = 8000;
 export const SESSION_MIN_DATE = "2000-01-01";
-/** Se permite agendar hasta un año hacia adelante. */
-export const SESSION_MAX_DAYS_AHEAD = 366;
+/**
+ * Una sesión es la nota de evolución de un encuentro que ya ocurrió: no se registran sesiones
+ * con fecha futura (tope = hoy en Argentina). Se conserva el nombre por compatibilidad.
+ */
+export const SESSION_MAX_DAYS_AHEAD = 0;
+/** Mensaje de validación para fechas posteriores a hoy (formulario y Server Action). */
+export const FUTURE_SESSION_MESSAGE = "La sesión no puede tener fecha futura: registrala el día en que se realiza.";
 export const DURATION_MIN = 1;
 export const DURATION_MAX = 600;
 
@@ -136,6 +141,20 @@ export function longDate(iso: string, withYear = false): string {
   const p = dayParts(iso);
   const s = `${p.weekdayLong}, ${p.day} de ${p.monthLong}${withYear ? ` de ${p.year}` : ""}`;
   return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+/** "hoy", "ayer", "hace 3 días", "hace 2 semanas", "hace 4 meses"… (fecha ≤ hoy). */
+export function relativeDayLabel(date: string, today: string): string {
+  const d = diffDays(date.slice(0, 10), today);
+  if (d <= 0) return "hoy";
+  if (d === 1) return "ayer";
+  if (d < 7) return `hace ${d} días`;
+  if (d < 30) {
+    const w = Math.round(d / 7);
+    return `hace ${w} ${w === 1 ? "semana" : "semanas"}`;
+  }
+  const m = Math.round(d / 30);
+  return m < 12 ? `hace ${m} ${m === 1 ? "mes" : "meses"}` : "hace más de un año";
 }
 
 /** "8 de octubre de 2026" */
@@ -289,6 +308,16 @@ function avg(values: number[]): number | null {
   return values.reduce((a, b) => a + b, 0) / values.length;
 }
 
+/**
+ * Estadísticas del tratamiento (regla de referencia para toda la app).
+ *
+ * - Solo cuentan como realizadas las sesiones con attendance = "attended" y fecha ≤ `today`
+ *   (defensivo: filas viejas con fecha futura no suman).
+ * - Numeración: 1, 2, 3… sobre las realizadas, en orden cronológico (compareSessionsAsc).
+ * - Mejoría % = (dolor al inicio de la primera sesión realizada − dolor final de la última, o su
+ *   dolor inicial si no se cargó el final) / dolor al inicio de la primera. Con un único registro
+ *   no hay comparación (null).
+ */
 export function computeSessionStats(
   sessions: SessionLike[],
   today: string,
@@ -348,6 +377,29 @@ export function computeSessionStats(
     painPoints,
     numbers,
   };
+}
+
+/** Fecha y horario de una sesión realizada (para numerar una sesión nueva o editada). */
+export type AttendedSlot = { date: string; time: string | null };
+
+/**
+ * Número que le corresponde a una sesión realizada el `date` (a las `time`) entre las ya
+ * realizadas `attended` (sin incluirse a sí misma): las anteriores + 1. Sigue el orden de
+ * compareSessionsAsc (sin horario primero; a igual fecha y hora, la nueva va última).
+ * Devuelve null si la fecha no es válida o es posterior a hoy.
+ */
+export function sessionNumberOn(
+  attended: AttendedSlot[],
+  date: string,
+  time: string | null,
+  today: string,
+): number | null {
+  if (!isValidISODate(date) || date > today) return null;
+  const t = toHHMM(time);
+  const before = attended.filter(
+    (s) => s.date <= today && (s.date < date || (s.date === date && toHHMM(s.time) <= t)),
+  ).length;
+  return before + 1;
 }
 
 /** Texto de la mejoría: "52 % menos dolor", "Sin cambios", "20 % más dolor". */

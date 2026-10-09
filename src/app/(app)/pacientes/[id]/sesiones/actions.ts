@@ -46,7 +46,10 @@ function revalidateSessionPaths(patientId: string) {
   revalidatePath("/", "layout");
 }
 
-/** Crea una sesión para el paciente. Uso: `createSession.bind(null, patientId)` con useActionState. */
+/**
+ * Crea una sesión (ya realizada: la fecha no puede ser posterior a hoy) para el paciente.
+ * Uso: `createSession.bind(null, patientId)` con useActionState.
+ */
 export async function createSession(patientId: string, _prev: ActionState, formData: FormData): Promise<ActionState> {
   if (!isUuid(patientId)) return { ok: false, message: "Paciente no válido." };
   const ctx = await context();
@@ -55,7 +58,7 @@ export async function createSession(patientId: string, _prev: ActionState, formD
   const parsed = parseSessionForm(formData, todayISO());
   if (!parsed.ok) return { ok: false, message: parsed.message, fieldErrors: parsed.fieldErrors };
 
-  const { error } = await ctx.supabase
+  const { data, error } = await ctx.supabase
     .from("treatment_sessions")
     .insert({ ...parsed.data, patient_id: patientId })
     .select("id")
@@ -63,7 +66,9 @@ export async function createSession(patientId: string, _prev: ActionState, formD
   if (error) return { ok: false, message: dbErrorMessage(error) };
 
   revalidateSessionPaths(patientId);
-  redirect(`/pacientes/${patientId}/sesiones?guardada=1`);
+  // Si el paciente asistió, la lista ofrece actualizar el mapa corporal vinculado a esta sesión.
+  const linked = parsed.data.attendance === "attended" && data?.id ? `&sesion=${data.id}` : "";
+  redirect(`/pacientes/${patientId}/sesiones?guardada=1${linked}`);
 }
 
 /** Actualiza una sesión. Uso: `updateSession.bind(null, patientId, sessionId)` con useActionState. */

@@ -1,6 +1,7 @@
 "use client";
 
 import { ArrowRight, ChevronDown, Copy, History } from "lucide-react";
+import { unstable_isUnrecognizedActionError, unstable_rethrow } from "next/navigation";
 import {
   startTransition,
   useActionState,
@@ -22,17 +23,21 @@ import { ATTENDANCE, SESSION_DURATIONS } from "@/lib/constants";
 import { initialActionState, type ActionState, type Attendance } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { TimeSelect } from "@/components/sessions/time-select";
+import { useUnsavedChangesGuard } from "@/components/sessions/use-unsaved-changes";
 import { WeekStrip } from "@/components/sessions/week-strip";
 import {
   DURATION_MAX,
   DURATION_MIN,
   durationLabel,
   endTime,
+  FUTURE_SESSION_MESSAGE,
   longDate,
   PAIN_SERIES,
   SESSION_TEXT_MAX,
+  sessionNumberOn,
   shortDate,
   TECHNIQUE_OPTIONS,
+  type AttendedSlot,
   type SessionFormValues,
   type SessionTextField,
 } from "@/components/sessions/session-utils";
@@ -47,6 +52,17 @@ export type PreviousSessionHint = {
 };
 
 const POPULAR_TECHNIQUES = 12;
+
+const UNSAVED_MESSAGE = "Tenés cambios sin guardar en la sesión. ¿Querés salir igual?";
+
+/** Lleva la vista y el foco al primer campo inválido (sin animar si se pidió menos movimiento). */
+function focusFirstInvalid(form: HTMLFormElement | null) {
+  const first = form?.querySelector<HTMLElement>("[aria-invalid=true]");
+  if (!first) return;
+  const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  first.scrollIntoView({ block: "center", behavior: reduce ? "auto" : "smooth" });
+  first.focus({ preventScroll: true });
+}
 
 const ATTENDANCE_OPTIONS = (Object.keys(ATTENDANCE) as Attendance[]).map((value) => ({
   value,
@@ -97,7 +113,7 @@ function SectionTitle({ children, hint, htmlFor }: { children: ReactNode; hint?:
       <Tag htmlFor={htmlFor} className="text-[15px] text-muted">
         {children}
       </Tag>
-      {hint ? <span className="text-[13px] text-subtle">{hint}</span> : null}
+      {hint ? <span className="text-[13px] text-muted">{hint}</span> : null}
     </div>
   );
 }
@@ -141,7 +157,7 @@ function LongText({
           {label}
         </label>
         {near ? (
-          <span className={cn("tabular text-xs", value.length > SESSION_TEXT_MAX ? "text-danger" : "text-subtle")}>
+          <span className={cn("tabular text-xs", value.length > SESSION_TEXT_MAX ? "text-danger" : "text-muted")}>
             {value.length.toLocaleString("es-AR")} / {SESSION_TEXT_MAX.toLocaleString("es-AR")}
           </span>
         ) : null}
@@ -165,9 +181,10 @@ function LongText({
 
 /**
  * Formulario de sesión (alta y edición), inspirado en la tarjeta de registro de daily:
- * fecha en tira semanal, horario grande, chips de duración y técnicas, escalas de dolor,
- * SOAP y pie gris con el botón blanco "Guardar sesión →". Estado 100% controlado:
- * si el servidor devuelve errores, no se pierde nada de lo escrito.
+ * fecha en tira semanal (solo hasta hoy: una sesión documenta un encuentro que ya ocurrió),
+ * horario grande, chips de duración y técnicas, EVA de la sesión, SOAP y barra de guardado fija.
+ * Estado 100% controlado: si el servidor devuelve errores (o la acción falla), no se pierde nada
+ * de lo escrito; al salir con cambios sin guardar se pide confirmación.
  */
 export function SessionForm({
   action,
@@ -176,6 +193,7 @@ export function SessionForm({
   mode,
   cancelHref,
   sessionNumber,
+  attendedSlots,
   previous,
   footerStart,
 }: {
@@ -185,13 +203,37 @@ export function SessionForm({
   today: string;
   mode: "create" | "edit";
   cancelHref: string;
+  /** Número de la sesión con los datos iniciales (en la edición, el calculado en el servidor). */
   sessionNumber?: number | null;
+  /**
+   * Sesiones realizadas del paciente (sin la que se edita): permite recalcular "Sesión N"
+   * cuando se cambia la fecha, el horario o la asistencia.
+   */
+  attendedSlots?: AttendedSlot[];
   previous?: PreviousSessionHint | null;
   /** Contenido extra a la izquierda del pie (p. ej. botón Eliminar en la edición). */
   footerStart?: ReactNode;
 }) {
-  const [state, formAction, isPending] = useActionState(action, initialActionState);
+  // Si la acción se rechaza (sesión vencida, deploy nuevo, red), devolver un estado de error en
+  // vez de dejar que error.tsx desmonte el formulario y se pierda la nota SOAP.
+  const safeAction = async (prev: ActionState, formData: FormData): Promise<ActionState> => {
+    try {
+      return await action(prev, formData);
+    } catch (error) {
+      unstable_rethrow(error); // redirect() al guardar bien
+      return {
+        ok: false,
+        message: unstable_isUnrecognizedActionError(error)
+          ? "Hay una versión nueva de kine: recargá la página para guardar (copiá antes lo que escribiste)."
+          : "No pudimos guardar la sesión. Revisá tu conexión y probá de nuevo.",
+      };
+    }
+  };
+  const [state, formAction, isPending] = useActionState(safeAction, initialActionState);
   const [values, setValues] = useState<SessionFormValues>(initial);
+  const [baseline] = useState(() => JSON.stringify(initial));
+  const dirty = JSON.stringify(values) !== baseline;
+  useUnsavedChangesGuard(dirty, UNSAVED_MESSAGE);
   // Las técnicas elegidas siempre se ven; el resto del catálogo se despliega a pedido.
   const [showAllTechniques, setShowAllTechniques] = useState(false);
   const [customDuration, setCustomDuration] = useState(() =>
@@ -205,19 +247,32 @@ export function SessionForm({
 
   const set = <K extends keyof SessionFormValues>(key: K, value: SessionFormValues[K]) =>
     setValues((v) => ({ ...v, [key]: value }));
+  const id = (name: string) => `${uid}-${name}`;
+  const err = (name: string) => errors[name];
 
   // Error del servidor: toast + foco en el primer campo inválido.
   useEffect(() => {
     if (state.ok || !state.message) return;
     toast.error(state.message);
-    const first = formRef.current?.querySelector<HTMLElement>("[aria-invalid=true]");
-    if (first) {
-      first.scrollIntoView({ block: "center", behavior: "smooth" });
-      first.focus({ preventScroll: true });
-    }
+    focusFirstInvalid(formRef.current);
   }, [state]);
 
   const attended = values.attendance === "attended";
+  const futureDate = Boolean(values.session_date) && values.session_date > today;
+  const dateError = err("session_date") ?? (futureDate ? FUTURE_SESSION_MESSAGE : undefined);
+
+  // "Sesión N" para la fecha y el horario elegidos (no solo para hoy).
+  const unchanged =
+    values.session_date === initial.session_date &&
+    values.start_time === initial.start_time &&
+    values.attendance === initial.attendance;
+  const number = !attended
+    ? null
+    : attendedSlots && !(mode === "edit" && unchanged && sessionNumber)
+      ? sessionNumberOn(attendedSlots, values.session_date, values.start_time || null, today)
+      : futureDate
+        ? null
+        : (sessionNumber ?? null);
   const end = values.start_time ? endTime(values.start_time, values.duration_minutes) : null;
   const delta = values.pain_before != null && values.pain_after != null ? values.pain_after - values.pain_before : null;
 
@@ -231,33 +286,39 @@ export function SessionForm({
   const onSubmit = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (isPending) return;
+    if (futureDate) {
+      toast.error(FUTURE_SESSION_MESSAGE);
+      focusFirstInvalid(formRef.current);
+      return;
+    }
     const formData = new FormData(e.currentTarget);
     startTransition(() => formAction(formData));
   };
 
-  const id = (name: string) => `${uid}-${name}`;
-  const err = (name: string) => errors[name];
+  const statusText = isPending
+    ? "Guardando…"
+    : dirty
+      ? "Cambios sin guardar"
+      : mode === "edit"
+        ? "Sin cambios"
+        : "Lista para guardar";
 
   return (
     <form ref={formRef} onSubmit={onSubmit} noValidate className="flex flex-col gap-6">
-      {/* Encabezado: fecha elegida + asistencia (como "Jueves, 8 de octubre" · "¿Cómo estuvo el día?") */}
+      {/* Encabezado: título de la pestaña, fecha elegida (como "Jueves, 8 de octubre") y asistencia */}
       <div className="flex animate-fade-up flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div className="min-w-0">
-          <p className="text-[15px] text-muted">
+          <h2 className="display flex flex-wrap items-baseline gap-x-2 text-2xl font-medium text-ink">
             {mode === "create" ? "Nueva sesión" : "Editar sesión"}
-            {sessionNumber ? (
-              <>
-                {" "}
-                · <span className="font-medium text-ink">Sesión {sessionNumber}</span>
-              </>
+            {number ? (
+              <span className="font-sans text-[15px] font-normal tracking-normal text-muted">· Sesión {number}</span>
             ) : null}
-            {values.session_date > today ? <> · Programada</> : null}
-          </p>
-          <h2 className="display mt-1 text-[30px] font-normal text-ink sm:text-[40px]" aria-live="polite">
+          </h2>
+          <p className="display mt-2 text-[30px] font-normal text-ink sm:text-[40px]" aria-live="polite">
             {values.session_date
               ? longDate(values.session_date, values.session_date.slice(0, 4) !== today.slice(0, 4))
               : "Elegí una fecha"}
-          </h2>
+          </p>
         </div>
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
           <span aria-hidden className="text-[15px] text-muted">
@@ -265,28 +326,28 @@ export function SessionForm({
           </span>
           <SegmentedControl<Attendance>
             name="attendance"
-            aria-label="Asistencia"
+            aria-label="¿Asistió el paciente?"
             options={ATTENDANCE_OPTIONS}
             value={values.attendance}
             onChange={(v) => set("attendance", v)}
-            className="self-start bg-surface p-1.5 sm:self-auto [&>button]:h-10 [&>button]:px-4"
+            className="w-full bg-surface p-1.5 sm:w-auto [&>button]:h-10 [&>button]:flex-1 [&>button]:justify-center [&>button]:gap-1.5 [&>button]:px-2 sm:[&>button]:flex-none sm:[&>button]:gap-2 sm:[&>button]:px-4"
           />
         </div>
       </div>
 
       <div className="animate-fade-up rounded-[34px] bg-surface-3/70 p-1.5 shadow-inset [animation-delay:60ms] sm:p-2">
         <div className="flex flex-col gap-9 rounded-card bg-surface p-5 sm:p-8">
-          {/* Fecha */}
+          {/* Fecha (hasta hoy: no se registran sesiones futuras) */}
           <div>
             <WeekStrip
               value={values.session_date}
               onChange={(d) => set("session_date", d)}
               today={today}
-              invalid={Boolean(err("session_date"))}
-              describedBy={err("session_date") ? id("session_date-error") : undefined}
+              invalid={Boolean(dateError)}
+              describedBy={dateError ? id("session_date-error") : undefined}
             />
             <input type="hidden" name="session_date" value={values.session_date} />
-            <FieldError id={id("session_date-error")} message={err("session_date")} />
+            <FieldError id={id("session_date-error")} message={dateError} />
           </div>
 
           {/* Horario y duración */}
@@ -308,7 +369,7 @@ export function SessionForm({
               <div className="shrink-0 text-right">
                 <p className="text-[15px] text-muted">Termina</p>
                 <p
-                  className="display tabular mt-1 flex h-[64px] items-center justify-end text-[34px] leading-none text-subtle sm:h-[72px] sm:text-[44px]"
+                  className="display tabular mt-1 flex h-[64px] items-center justify-end text-[34px] leading-none text-muted sm:h-[72px] sm:text-[44px]"
                   aria-live="polite"
                 >
                   {end ?? "--:--"}
@@ -360,10 +421,10 @@ export function SessionForm({
                       aria-describedby={err("duration_minutes") ? id("duration-error") : undefined}
                       className={cn(
                         "tabular w-10 bg-transparent text-right outline-none",
-                        customDuration !== "" ? "placeholder:text-white/60" : "placeholder:text-muted",
+                        customDuration !== "" ? "placeholder:text-white/70" : "placeholder:text-muted",
                       )}
                     />
-                    <span className={customDuration !== "" ? "text-white/70" : "text-muted"}>min</span>
+                    <span className={customDuration !== "" ? "text-white/80" : "text-muted"}>min</span>
                   </label>
                 </div>
               </div>
@@ -381,7 +442,7 @@ export function SessionForm({
                 </span>
               </div>
 
-              {previous ? (
+              {previous && previous.date <= values.session_date ? (
                 <div className="flex flex-col gap-3 rounded-panel bg-surface-2 p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5">
                   <div className="flex min-w-0 gap-3">
                     <span className="inline-flex size-9 shrink-0 items-center justify-center rounded-full bg-surface text-muted shadow-inset">
@@ -391,7 +452,7 @@ export function SessionForm({
                       <p className="font-medium text-ink">
                         Sesión anterior · {shortDate(previous.date)}
                         {previous.painAfter != null ? (
-                          <span className="font-normal text-muted"> · terminó con dolor {previous.painAfter}/10</span>
+                          <span className="font-normal text-muted"> · terminó con EVA {previous.painAfter}/10</span>
                         ) : null}
                       </p>
                       {previous.plan ? <p className="mt-0.5 line-clamp-2 text-muted">Plan: {previous.plan}</p> : null}
@@ -418,7 +479,7 @@ export function SessionForm({
                 <SectionTitle
                   hint={values.techniques.length > 0 ? `${values.techniques.length} elegidas` : "Podés elegir varias"}
                 >
-                  ¿Qué trabajaron hoy?
+                  ¿Qué trabajaron?
                 </SectionTitle>
                 <div role="group" aria-label="Técnicas utilizadas" className="flex flex-wrap gap-2">
                   {visibleTechniques.map((o) => {
@@ -460,8 +521,9 @@ export function SessionForm({
                 <FieldError id={id("techniques-error")} message={err("techniques")} />
               </div>
 
-              {/* Dolor */}
+              {/* EVA de la sesión (dolor global; el dolor por zona se registra en el mapa corporal) */}
               <div>
+                <SectionTitle hint="0 = sin dolor · 10 = el peor dolor imaginable">EVA de la sesión (0–10)</SectionTitle>
                 <div className="grid gap-4 md:grid-cols-2">
                   <ScaleBar
                     name="pain_before"
@@ -492,7 +554,7 @@ export function SessionForm({
                           : "Sin cambios durante la sesión."}
                     </p>
                   ) : (
-                    <p className="text-subtle">Tocá de nuevo un valor para dejarlo sin registrar.</p>
+                    <p className="text-muted">Tocá de nuevo un valor para dejarlo sin registrar.</p>
                   )}
                 </div>
                 <FieldError id={id("pain_before-error")} message={err("pain_before") ?? err("pain_after")} />
@@ -520,7 +582,7 @@ export function SessionForm({
                   id={id("home_exercises")}
                   name="home_exercises"
                   label="Ejercicios para casa"
-                  placeholder="Ej.: Puente de glúteos 3×12, elongación de isquiotibiales 3×30 s, hielo 15 min si hay dolor…"
+                  placeholder="Ej.: puente de glúteos 3×12, elongación de isquiotibiales 3×30 s, hielo 15 min si hay dolor…"
                   value={values.home_exercises}
                   onChange={(v) => set("home_exercises", v)}
                   error={err("home_exercises")}
@@ -530,7 +592,7 @@ export function SessionForm({
                   id={id("notes")}
                   name="notes"
                   label="Notas"
-                  placeholder="Observaciones internas, pagos, coordinación con el médico…"
+                  placeholder="Ej.: observaciones internas, pagos, coordinación con el médico…"
                   value={values.notes}
                   onChange={(v) => set("notes", v)}
                   error={err("notes")}
@@ -563,29 +625,36 @@ export function SessionForm({
           )}
         </div>
 
-        {/* Pie gris (como el de daily): ayuda + botón blanco */}
-        <div className="flex flex-col gap-4 px-3 pt-4 pb-2 sm:flex-row sm:items-center sm:justify-between sm:px-5 sm:pt-5 sm:pb-3">
-          <div className="flex min-w-0 items-center gap-3">
-            {footerStart}
-            <p className="text-[15px] text-muted">
-              {attended
-                ? "Puntuá el dolor del 0 (sin dolor) al 10 (insoportable)."
-                : "Podés reprogramar creando una nueva sesión."}
+        {/* Barra de guardado fija (como la de la historia clínica): siempre a mano en un formulario largo. */}
+        <div className="pointer-events-none sticky bottom-3 z-20 px-0.5 pt-3 pb-0.5 sm:bottom-5 sm:px-1 sm:pt-4 sm:pb-1 print:hidden">
+          <div className="pointer-events-auto flex items-center gap-2 rounded-[26px] bg-ink p-1.5 text-white shadow-float sm:pl-5">
+            {footerStart ? <div className="flex shrink-0 items-center">{footerStart}</div> : null}
+            <p
+              role="status"
+              aria-live="polite"
+              className="sr-only flex-1 items-center gap-2 text-[14px] text-white/85 sm:not-sr-only sm:flex sm:min-w-0"
+            >
+              {dirty && !isPending ? <span aria-hidden className="size-2 shrink-0 rounded-full bg-orange" /> : null}
+              <span className="truncate">{statusText}</span>
             </p>
-          </div>
-          <div className="flex items-center gap-2 self-end sm:self-auto">
-            <ButtonLink href={cancelHref} variant="ghost" size="lg" className="px-5">
+            <span aria-hidden className="flex-1 sm:hidden" />
+            <ButtonLink
+              href={cancelHref}
+              variant="ghost"
+              className="px-4 text-white hover:bg-white/10 focus-visible:outline-white sm:px-5"
+            >
               Cancelar
             </ButtonLink>
             <SubmitButton
               pending={isPending}
               variant="inverse"
-              size="lg"
               iconRight={<ArrowRight />}
               pendingLabel="Guardando…"
-              className="px-7 text-[16px] shadow-soft"
+              className="px-5 focus-visible:outline-white sm:px-6"
             >
-              Guardar sesión
+              <span>
+                Guardar<span className="hidden min-[400px]:inline"> sesión</span>
+              </span>
             </SubmitButton>
           </div>
         </div>

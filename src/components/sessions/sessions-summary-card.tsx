@@ -85,10 +85,10 @@ export function SessionsSummaryCard({
       </div>
 
       <div className="relative mt-8">
-        <p className="text-sm text-white/75">Sesiones realizadas</p>
+        <p className="text-sm text-white/85">Sesiones realizadas</p>
         <p className="display mt-1 flex items-baseline gap-2">
           <span className="text-[56px] leading-none font-normal">{stats.attended}</span>
-          {stats.prescribed ? <span className="text-xl text-white/70">de {stats.prescribed}</span> : null}
+          {stats.prescribed ? <span className="text-xl text-white/80">de {stats.prescribed}</span> : null}
         </p>
         {stats.prescribed ? (
           <>
@@ -99,35 +99,35 @@ export function SessionsSummaryCard({
               label={`${stats.attended} de ${stats.prescribed} sesiones prescriptas`}
             />
             {stats.attended > stats.prescribed ? (
-              <p className="mt-2 text-[13px] text-white/70">
+              <p className="mt-2 text-[13px] text-white/80">
                 {stats.attended - stats.prescribed} por encima de lo prescripto
               </p>
             ) : null}
           </>
         ) : (
-          <p className="mt-2 text-[13px] text-white/70">Sin cantidad prescripta en la historia clínica</p>
+          <p className="mt-2 text-[13px] text-white/80">Sin cantidad prescripta en la historia clínica</p>
         )}
       </div>
 
       <div className="relative mt-auto grid grid-cols-2 gap-4 pt-8">
         <div>
-          <p className="flex items-center gap-2 text-sm text-white/75">
+          <p className="flex items-center gap-2 text-sm text-white/85">
             <span aria-hidden className="size-2 rounded-full bg-orange ring-2 ring-white/30" />
-            EVA prom. inicio
+            EVA prom. al inicio
           </p>
           <p className="display mt-1">
             <span className="text-[44px] leading-none font-normal sm:text-[48px]">{formatScore(stats.avgBefore)}</span>
-            <span className="text-base text-white/70">/10</span>
+            <span className="text-base text-white/80">/10</span>
           </p>
         </div>
         <div>
-          <p className="flex items-center gap-2 text-sm text-white/75">
+          <p className="flex items-center gap-2 text-sm text-white/85">
             <span aria-hidden className="size-2 rounded-full bg-white ring-2 ring-white/30" />
-            EVA prom. final
+            EVA prom. al final
           </p>
           <p className="display mt-1">
             <span className="text-[44px] leading-none font-normal sm:text-[48px]">{formatScore(stats.avgAfter)}</span>
-            <span className="text-base text-white/70">/10</span>
+            <span className="text-base text-white/80">/10</span>
           </p>
         </div>
       </div>

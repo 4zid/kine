@@ -1,11 +1,10 @@
 import { z } from "zod";
 import type { TreatmentSessionInsert } from "@/lib/types";
 import {
-  addDays,
   DURATION_MAX,
   DURATION_MIN,
+  FUTURE_SESSION_MESSAGE,
   isValidISODate,
-  SESSION_MAX_DAYS_AHEAD,
   SESSION_MIN_DATE,
   SESSION_TEXT_MAX,
   TECHNIQUE_VALUES,
@@ -37,14 +36,14 @@ const optionalInt = (min: number, max: number, message: string) =>
     });
 
 function sessionSchema(today: string) {
-  const maxDate = addDays(today, SESSION_MAX_DAYS_AHEAD);
   return z.object({
+    // Una sesión documenta un encuentro que ya ocurrió: nunca después de hoy (Argentina).
     session_date: z
       .string()
       .trim()
       .refine(isValidISODate, { error: "Elegí una fecha válida." })
       .refine((v) => v >= SESSION_MIN_DATE, { error: "La fecha es demasiado antigua." })
-      .refine((v) => v <= maxDate, { error: "Podés agendar sesiones hasta un año hacia adelante." }),
+      .refine((v) => v <= today, { error: FUTURE_SESSION_MESSAGE }),
     start_time: z
       .string()
       .trim()

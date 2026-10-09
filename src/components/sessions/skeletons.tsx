@@ -8,12 +8,9 @@ function Bone({ className }: { className?: string }) {
 export function SessionsSkeleton() {
   return (
     <div className="flex flex-col gap-8" role="status" aria-label="Cargando sesiones">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-        <div className="space-y-3">
-          <Bone className="h-4 w-56" />
-          <Bone className="h-10 w-48" />
-        </div>
-        <Bone className="h-14 w-44" />
+      <div className="space-y-2.5">
+        <Bone className="h-7 w-32" />
+        <Bone className="h-4 w-64" />
       </div>
       <div className="grid gap-4 lg:grid-cols-[minmax(0,5fr)_minmax(0,7fr)] lg:gap-5">
         <div className="h-[380px] animate-pulse rounded-card bg-accent/25" />

@@ -3,10 +3,18 @@ import type { ReactNode } from "react";
 import { Badge, PainBadge } from "@/components/ui/badge";
 import { DecorCircles } from "@/components/ui/decor";
 import { LogoMark } from "@/components/ui/logo";
-import { ATTENDANCE, PAIN_FREQUENCY, PAIN_STATUS, PAIN_TYPES } from "@/lib/constants";
+import { ATTENDANCE, PAIN_FREQUENCY, PAIN_STATUS, PAIN_TYPES, STUDY_KINDS } from "@/lib/constants";
 import { getRegionLabel } from "@/lib/body-regions";
-import type { Attendance, ClinicalHistory, Patient, PainStatus, Professional, TreatmentSession } from "@/lib/types";
-import { cn } from "@/lib/utils";
+import type {
+  Attendance,
+  ClinicalHistory,
+  Patient,
+  PainStatus,
+  Professional,
+  StudyKind,
+  TreatmentSession,
+} from "@/lib/types";
+import { cn, toISODate } from "@/lib/utils";
 import { PainBarsChart, PainLegend } from "@/components/sessions/pain-bars-chart";
 import { PainChange } from "@/components/sessions/session-card";
 import {
@@ -18,11 +26,13 @@ import {
   fullDate,
   improvementText,
   plural,
+  relativeDayLabel,
   shortDate,
   techniqueColor,
   techniqueLabel,
   toHHMM,
   dayParts,
+  type SessionLike,
 } from "@/components/sessions/session-utils";
 import {
   ageOn,
@@ -102,7 +112,29 @@ export type ReportPainZone = {
   status: string;
   pain_types: string[];
   frequency: string | null;
+  irradiation?: string | null;
+  aggravating_factors?: string | null;
+  relieving_factors?: string | null;
+  /** Momento del último registro de la zona (timestamptz). */
+  recorded_at?: string | null;
 };
+
+export type ReportStudy = {
+  id: string;
+  title: string;
+  kind: string;
+  study_date: string | null;
+  findings: string | null;
+};
+
+/** Recorta un texto largo para el informe (sin cortar palabras si se puede). */
+function excerpt(text: string, max = 320): string {
+  const t = text.trim();
+  if (t.length <= max) return t;
+  const cut = t.slice(0, max);
+  const space = cut.lastIndexOf(" ");
+  return `${(space > max * 0.6 ? cut.slice(0, space) : cut).trimEnd()}…`;
+}
 
 // ---------------------------------------------------------------------------
 // Piezas
@@ -147,7 +179,7 @@ function Block({
 
 function Eyebrow({ children, className }: { children: ReactNode; className?: string }) {
   return (
-    <p className={cn("text-[11px] font-medium tracking-[0.14em] text-subtle uppercase print:text-[9px]", className)}>
+    <p className={cn("text-[11px] font-medium tracking-[0.14em] text-muted uppercase print:text-[9px]", className)}>
       {children}
     </p>
   );
@@ -229,6 +261,10 @@ const deg = (v: number | null) => (v == null ? "—" : `${v}°`);
 /**
  * Informe kinésico imprimible (A4). Presentacional: recibe todo ya leído y filtrado por período.
  * `bodyMap` es un hueco para la figura del mapa corporal (BodyMapPreview, otro módulo).
+ *
+ * Con un período acotado, las cifras del período se rotulan como tales ("EVA al final del
+ * período", "N sesiones en el período (M en total)") y la numeración de cada sesión y lo
+ * prescripto se cuentan sobre todo el tratamiento (`timeline`).
  */
 export function ReportDocument({
   today,
@@ -237,7 +273,9 @@ export function ReportDocument({
   patient,
   history,
   sessions,
+  timeline,
   painZones,
+  studies = [],
   bodyMap,
 }: {
   today: string;
@@ -247,14 +285,30 @@ export function ReportDocument({
   history: ClinicalHistory | null;
   /** Sesiones del período con fecha ≤ hoy. */
   sessions: ReportSession[];
-  /** Zonas con dolor actual (último registro por zona, sin resueltas). */
+  /** Historial liviano del tratamiento completo hasta el cierre del período. Sin él, se usa `sessions`. */
+  timeline?: SessionLike[];
+  /** Zonas con dolor al cierre del período (último registro por zona, sin resueltas ni en 0). */
   painZones: ReportPainZone[];
+  /** Estudios complementarios cargados en la ficha (hasta el cierre del período). */
+  studies?: ReportStudy[];
   bodyMap?: ReactNode;
 }) {
-  const stats = computeSessionStats(sessions, period.to, history?.prescribed_sessions ?? null);
+  const prescribed = history?.prescribed_sessions ?? null;
+  const bounded = period.kind !== "todo";
+  /** Cifras del período. */
+  const stats = computeSessionStats(sessions, period.to, prescribed);
+  /** Tratamiento completo hasta el cierre del período: numeración y sesiones prescriptas. */
+  const full = timeline ? computeSessionStats(timeline, period.to, prescribed) : stats;
   const evolution = [...sessions].sort((a, b) => compareSessionsAsc(b, a));
   const techniques = techniqueCounts(sessions);
   const maxTechnique = techniques[0]?.count ?? 1;
+
+  const firstPainPoint = stats.painPoints.find((p) => p.before != null) ?? null;
+  const lastPainPoint = stats.painPoints.at(-1) ?? null;
+  const periodImprovement = improvementText(stats.improvementPct);
+  const treatmentImprovement = bounded ? improvementText(full.improvementPct) : null;
+  const painAsOf = period.to;
+  const painIsCurrent = painAsOf >= today;
 
   const from = period.from ?? stats.firstDate ?? period.to;
   const to = period.kind === "todo" ? (stats.lastDate ?? period.to) : period.to;
@@ -275,6 +329,8 @@ export function ReportDocument({
 
   const conditions = (history?.conditions ?? []).map(conditionMeta);
   const alertConditions = conditions.filter((c) => c.alert);
+  const contraindications = alertConditions.filter((c) => !c.precaution);
+  const precautions = alertConditions.filter((c) => c.precaution);
   const otherConditions = conditions.filter((c) => !c.alert);
   const allergies = history?.allergies?.trim();
   const redFlags = history?.red_flags?.trim();
@@ -329,20 +385,27 @@ export function ReportDocument({
       aria-label={`Informe kinésico de ${name}`}
       className="flex flex-col gap-5 [print-color-adjust:exact] [-webkit-print-color-adjust:exact] print:gap-3.5 print:text-[12px]"
     >
-      {/* Título (como "Informe semanal · Martina Ruiz · Semana 41" / "5 – 11 oct 2026") */}
+      {/* Título (como "Informe semanal · Martina Ruiz · Semana 41" / "5 – 11 oct 2026").
+          En pantalla el nombre ya está en el encabezado del paciente: solo se imprime. */}
       <header className="break-inside-avoid pt-2 print:pt-0">
         <div className="flex items-start justify-between gap-4">
           <p className="text-[15px] text-muted print:text-[12px] [&_strong]:font-medium [&_strong]:text-ink">
-            Informe kinésico · <strong>{name}</strong> · {plural(stats.attended, "sesión", "sesiones")}
+            <span className="hidden print:inline">
+              Informe kinésico · <strong>{name}</strong> ·{" "}
+            </span>
+            {bounded
+              ? `${plural(stats.attended, "sesión", "sesiones")} en el período (${full.attended} en total)`
+              : plural(full.attended, "sesión realizada", "sesiones realizadas")}
           </p>
           <span className="hidden items-center gap-2 print:inline-flex">
             <LogoMark className="size-6" />
             <span className="display text-[16px] font-medium">kine</span>
           </span>
         </div>
-        <h2 className="display mt-2 text-[40px] font-normal text-ink sm:text-[56px] print:mt-1 print:text-[34px]">
+        <h3 className="display mt-1 text-[30px] font-normal text-ink sm:text-[38px] print:mt-1 print:text-[34px]">
+          <span className="sr-only">Período: </span>
           {range.main} <span className="text-muted">{range.year}</span>
-        </h2>
+        </h3>
       </header>
 
       {/* Profesional y paciente */}
@@ -402,8 +465,8 @@ export function ReportDocument({
               className="md:col-span-2 print:col-span-2"
             />
             <TextItem label="Diagnóstico médico" text={patient.medical_diagnosis} />
-            <TextItem label="Diagnóstico kinésico funcional" text={patient.kinesic_diagnosis} />
-            <TextItem label="Inicio de síntomas" text={onset} />
+            <TextItem label="Diagnóstico kinésico" text={patient.kinesic_diagnosis} />
+            <TextItem label="Inicio de los síntomas" text={onset} />
             <TextItem label="Mecanismo de lesión" text={patient.injury_mechanism} />
           </div>
         </Block>
@@ -420,16 +483,30 @@ export function ReportDocument({
                 </span>
                 Alertas y contraindicaciones
               </p>
-              {alertConditions.length > 0 ? (
-                <ul className="mt-3 flex flex-wrap gap-1.5 print:mt-2" aria-label="Antecedentes con alerta">
-                  {alertConditions.map((c) => (
+              {contraindications.length > 0 ? (
+                <ul className="mt-3 flex flex-wrap gap-1.5 print:mt-2" aria-label="Pueden contraindicar técnicas">
+                  {contraindications.map((c) => (
                     <li key={c.label}>
-                      <Badge dot="#B7791F" tone="white" className="h-7 print:h-5 print:text-[10px]">
+                      <Badge dot="var(--color-danger)" tone="white" className="h-7 print:h-5 print:text-[10px]">
                         {c.label}
                       </Badge>
                     </li>
                   ))}
                 </ul>
+              ) : null}
+              {precautions.length > 0 ? (
+                <div className="mt-3 flex flex-wrap items-center gap-1.5 print:mt-2">
+                  <span className="mr-1 text-[13px] font-medium text-warning print:text-[10px]">Requieren precaución:</span>
+                  <ul className="contents" aria-label="Requieren precaución">
+                    {precautions.map((c) => (
+                      <li key={c.label}>
+                        <Badge dot="var(--color-warning)" tone="white" className="h-7 print:h-5 print:text-[10px]">
+                          {c.label}
+                        </Badge>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
               ) : null}
               <div className="mt-3 grid gap-3 sm:grid-cols-2 print:mt-2 print:grid-cols-2 print:gap-2">
                 <TextItem label="Alergias" text={allergies} />
@@ -462,47 +539,77 @@ export function ReportDocument({
         >
           <DecorCircles className="text-white" variant="a" />
           <span className="relative inline-flex h-9 items-center self-start rounded-full px-4 text-sm font-medium shadow-[inset_0_0_0_1px_rgb(255_255_255/0.6)] print:h-6 print:px-3 print:text-[11px]">
-            Resumen del período
+            {bounded ? "Resumen del período" : "Resumen del tratamiento"}
           </span>
           <div className="relative mt-8 flex items-end gap-3 print:mt-4">
-            <div>
-              <p className="text-sm text-white/75 print:text-[11px]">EVA inicial</p>
+            <div className="min-w-0">
+              <p className="text-sm text-white/85 print:text-[11px]">
+                {bounded ? "EVA al inicio del período" : "EVA inicial"}
+              </p>
               <p className="display mt-1">
                 <span className="text-[52px] leading-none print:text-[34px]">{stats.initialPain ?? "—"}</span>
-                <span className="text-base text-white/70 print:text-[12px]">/10</span>
+                <span className="text-base text-white/80 print:text-[12px]">/10</span>
               </p>
+              {firstPainPoint ? (
+                <p className="mt-1 text-[12px] text-white/80 print:text-[10px]">
+                  Sesión {full.numbers[firstPainPoint.id] ?? firstPainPoint.number} · {shortDate(firstPainPoint.date)}
+                </p>
+              ) : null}
             </div>
-            <ArrowRight className="mb-3 size-6 shrink-0 text-white/60 print:mb-2 print:size-4" aria-hidden />
-            <div>
-              <p className="text-sm text-white/75 print:text-[11px]">EVA actual</p>
+            <ArrowRight className="mb-8 size-6 shrink-0 text-white/60 print:mb-6 print:size-4" aria-hidden />
+            <div className="min-w-0">
+              <p className="text-sm text-white/85 print:text-[11px]">
+                {bounded ? "EVA al final del período" : "EVA en la última sesión"}
+              </p>
               <p className="display mt-1">
                 <span className="text-[52px] leading-none print:text-[34px]">{stats.latestPain ?? "—"}</span>
-                <span className="text-base text-white/70 print:text-[12px]">/10</span>
+                <span className="text-base text-white/80 print:text-[12px]">/10</span>
               </p>
+              {lastPainPoint ? (
+                <p className="mt-1 text-[12px] text-white/80 print:text-[10px]">
+                  Sesión {full.numbers[lastPainPoint.id] ?? lastPainPoint.number} · {shortDate(lastPainPoint.date)}
+                </p>
+              ) : null}
             </div>
           </div>
           <p className="relative mt-3 text-[17px] font-medium print:mt-2 print:text-[13px]">
-            {improvementText(stats.improvementPct) ?? "Sin registros suficientes para comparar"}
+            {periodImprovement
+              ? `${periodImprovement} ${bounded ? "en el período" : "desde la primera sesión"}`
+              : "Sin registros suficientes para comparar"}
           </p>
+          {treatmentImprovement ? (
+            <p className="relative mt-0.5 text-[13px] text-white/85 print:text-[10.5px]">
+              Desde el inicio del tratamiento: {treatmentImprovement.toLowerCase()}
+            </p>
+          ) : null}
           <dl className="relative mt-auto grid grid-cols-2 gap-4 border-t border-white/20 pt-5 print:gap-2 print:pt-3">
             <div>
-              <dt className="text-sm text-white/75 print:text-[11px]">Sesiones realizadas</dt>
+              <dt className="text-sm text-white/85 print:text-[11px]">
+                {bounded ? "Sesiones en el período" : "Sesiones realizadas"}
+              </dt>
               <dd className="display mt-0.5 text-[28px] print:text-[20px]">
-                {stats.attended}
-                {stats.prescribed ? (
-                  <span className="text-base text-white/70 print:text-[12px]"> de {stats.prescribed}</span>
+                {bounded ? stats.attended : full.attended}
+                {!bounded && full.prescribed ? (
+                  <span className="text-base text-white/80 print:text-[12px]"> de {full.prescribed}</span>
                 ) : null}
               </dd>
+              {bounded ? (
+                <p className="mt-0.5 text-[12px] text-white/85 print:text-[10px]">
+                  {full.attended} en total{full.prescribed ? ` de ${full.prescribed} prescriptas` : ""}
+                </p>
+              ) : null}
             </div>
             <div>
-              <dt className="text-sm text-white/75 print:text-[11px]">Asistencia</dt>
+              <dt className="text-sm text-white/85 print:text-[11px]">
+                {bounded ? "Asistencia en el período" : "Asistencia"}
+              </dt>
               <dd className="display mt-0.5 text-[28px] print:text-[20px]">
                 {stats.attendanceRate != null ? `${stats.attendanceRate} %` : "—"}
               </dd>
             </div>
           </dl>
           {stats.absent + stats.cancelled > 0 ? (
-            <p className="relative mt-2 text-[13px] text-white/75 print:text-[10px]">
+            <p className="relative mt-2 text-[13px] text-white/85 print:text-[10px]">
               {[
                 stats.absent ? plural(stats.absent, "ausencia", "ausencias") : null,
                 stats.cancelled ? plural(stats.cancelled, "cancelada", "canceladas") : null,
@@ -514,21 +621,52 @@ export function ReportDocument({
         </section>
 
         <Block
-          title="Dolor por sesión"
-          description="EVA de 0 a 10 al empezar y al terminar cada sesión."
+          title="EVA de la sesión"
+          description="EVA (0–10) al empezar y al terminar cada sesión · 0 = sin dolor, 10 = el peor dolor imaginable."
           action={<PainLegend className="sm:pt-1 print:text-[10px]" />}
           className="flex flex-col"
         >
-          <PainBarsChart points={stats.painPoints} className="mt-auto" />
+          <PainBarsChart
+            points={stats.painPoints.map((p) => ({ ...p, number: full.numbers[p.id] ?? p.number }))}
+            printMaxLabels={6}
+            className="mt-auto"
+          />
         </Block>
       </div>
 
-      {/* Técnicas + zonas de dolor */}
-      <div className="grid gap-5 md:grid-cols-2 print:grid-cols-2 print:gap-3.5">
+      {/* Dolor por zona (mapa corporal) al cierre del período: figura al lado de la lista. */}
+      <Block
+        title="Dolor por zona (mapa corporal)"
+        description={`Zonas con dolor al ${fullDate(painAsOf)} · último registro de cada zona.`}
+        breakable
+      >
+        {painZones.length === 0 ? (
+          <p className="text-sm text-muted">Sin zonas con dolor activo registradas al {shortDate(painAsOf, true)}.</p>
+        ) : (
+          <div
+            className={cn(
+              "grid items-start gap-x-8 gap-y-5",
+              bodyMap && "md:grid-cols-[auto_minmax(0,1fr)] print:grid-cols-[auto_minmax(0,1fr)] print:gap-x-6",
+            )}
+          >
+            {bodyMap ? <div className="break-inside-avoid justify-self-center">{bodyMap}</div> : null}
+            <ul className="flex min-w-0 flex-col divide-y divide-line">
+              {painZones.map((z) => (
+                <PainZoneItem key={z.id} zone={z} today={today} relative={painIsCurrent} />
+              ))}
+            </ul>
+          </div>
+        )}
+      </Block>
+
+      {/* Técnicas + estudios complementarios (sin estirar la tarjeta más corta). */}
+      <div className="grid items-start gap-5 md:grid-cols-2 print:grid-cols-2 print:gap-3.5">
         <Block
           title="Técnicas más utilizadas"
           description={
-            techniques.length ? `En ${plural(stats.attended, "sesión realizada", "sesiones realizadas")}` : undefined
+            techniques.length
+              ? `En ${plural(stats.attended, "sesión realizada", "sesiones realizadas")}${bounded ? " del período" : ""}`
+              : undefined
           }
         >
           {techniques.length === 0 ? (
@@ -563,35 +701,29 @@ export function ReportDocument({
           )}
         </Block>
 
-        <Block title="Zonas de dolor actuales" description="Último registro de cada zona en el mapa corporal.">
-          {bodyMap ? <div className="mb-5 print:mb-3">{bodyMap}</div> : null}
-          {painZones.length === 0 ? (
-            <p className="text-sm text-muted">Sin zonas con dolor activo registradas.</p>
+        <Block
+          title="Estudios complementarios"
+          description={studies.length ? plural(studies.length, "estudio cargado", "estudios cargados") : undefined}
+          breakable
+        >
+          {studies.length === 0 ? (
+            <p className="text-sm text-muted">No hay estudios complementarios cargados.</p>
           ) : (
             <ul className="flex flex-col divide-y divide-line">
-              {painZones.map((z) => {
-                const status = PAIN_STATUS[z.status as PainStatus];
-                const types = z.pain_types.map((t) => PAIN_TYPES.find((p) => p.value === t)?.label ?? t);
-                const freq = PAIN_FREQUENCY.find((f) => f.value === z.frequency)?.label;
-                return (
-                  <li key={z.id} className="flex items-start gap-3 py-2.5 first:pt-0 last:pb-0 print:py-1.5">
-                    <PainBadge intensity={z.intensity} size="sm" className="mt-0.5" />
-                    <div className="min-w-0 flex-1">
-                      <p className="text-[14px] font-medium text-ink print:text-[11.5px]">{getRegionLabel(z.region)}</p>
-                      {types.length || freq ? (
-                        <p className="text-[13px] text-muted print:text-[10px]">
-                          {[types.join(", "), freq].filter(Boolean).join(" · ")}
-                        </p>
-                      ) : null}
-                    </div>
-                    {status ? (
-                      <Badge dot={status.color} tone="white" className="h-6 px-2 text-xs print:h-5 print:text-[10px]">
-                        {status.label}
-                      </Badge>
-                    ) : null}
-                  </li>
-                );
-              })}
+              {studies.map((st) => (
+                <li key={st.id} className="break-inside-avoid py-2.5 first:pt-0 last:pb-0 print:py-1.5">
+                  <p className="text-[12px] text-muted print:text-[10px]">
+                    {STUDY_KINDS[st.kind as StudyKind]?.label ?? "Estudio"} ·{" "}
+                    {st.study_date ? shortDate(st.study_date, true) : "Sin fecha"}
+                  </p>
+                  <p className="mt-0.5 text-[14px] font-medium break-words text-ink print:text-[11.5px]">{st.title}</p>
+                  {st.findings?.trim() ? (
+                    <p className="mt-1 text-[13px] leading-relaxed break-words whitespace-pre-line text-ink-2 print:text-[10.5px] print:leading-snug">
+                      {excerpt(st.findings)}
+                    </p>
+                  ) : null}
+                </li>
+              ))}
             </ul>
           )}
         </Block>
@@ -723,7 +855,13 @@ export function ReportDocument({
       {/* Evolución */}
       <Block
         title="Evolución"
-        description={evolution.length ? "Sesiones del período, de la más reciente a la más antigua." : undefined}
+        description={
+          evolution.length
+            ? bounded
+              ? "Sesiones del período, de la más reciente a la más antigua. La numeración es la del tratamiento completo."
+              : "Sesiones del tratamiento, de la más reciente a la más antigua."
+            : undefined
+        }
         breakable
       >
         {evolution.length === 0 ? (
@@ -731,7 +869,7 @@ export function ReportDocument({
         ) : (
           <ol className="flex flex-col divide-y divide-line">
             {evolution.map((s) => (
-              <EvolutionItem key={s.id} session={s} number={stats.numbers[s.id]} />
+              <EvolutionItem key={s.id} session={s} number={full.numbers[s.id]} />
             ))}
           </ol>
         )}
@@ -748,7 +886,7 @@ export function ReportDocument({
           <div className="h-16 border-b border-ink/60 print:h-14" />
           <p className="mt-2 text-[14px] font-medium text-ink print:text-[11.5px]">{proName}</p>
           {license ? <p className="text-[13px] text-muted print:text-[10.5px]">{license}</p> : null}
-          <p className="mt-1 text-[12px] tracking-wide text-subtle uppercase print:text-[9px]">Firma y sello</p>
+          <p className="mt-1 text-[12px] tracking-wide text-muted uppercase print:text-[9px]">Firma y sello</p>
         </div>
       </footer>
     </article>
@@ -761,6 +899,52 @@ function weeksAgo(days: number): string {
   if (days < 60) return `hace ${Math.round(days / 7)} semanas`;
   const months = Math.round(days / 30);
   return months < 24 ? `hace ${months} meses` : `hace ${Math.round(days / 365)} años`;
+}
+
+function PainZoneItem({ zone: z, today, relative }: { zone: ReportPainZone; today: string; relative: boolean }) {
+  const status = PAIN_STATUS[z.status as PainStatus];
+  const types = z.pain_types.map((t) => PAIN_TYPES.find((p) => p.value === t)?.label ?? t);
+  const freq = PAIN_FREQUENCY.find((f) => f.value === z.frequency)?.label;
+  const recorded = z.recorded_at ? toISODate(new Date(z.recorded_at)) : null;
+  const details: [string, string | null | undefined][] = [
+    ["Irradiación", z.irradiation],
+    ["Agrava", z.aggravating_factors],
+    ["Alivia", z.relieving_factors],
+  ];
+  return (
+    <li className="flex break-inside-avoid items-start gap-3 py-2.5 first:pt-0 last:pb-0 print:py-1.5">
+      <PainBadge intensity={z.intensity} size="sm" className="mt-0.5" />
+      <div className="min-w-0 flex-1">
+        <p className="text-[14px] font-medium text-ink print:text-[11.5px]">{getRegionLabel(z.region)}</p>
+        {types.length || freq ? (
+          <p className="text-[13px] text-ink-2 print:text-[10.5px]">{[types.join(", "), freq].filter(Boolean).join(" · ")}</p>
+        ) : null}
+        {details.some(([, v]) => v?.trim()) ? (
+          <dl className="mt-1 flex flex-col gap-0.5 text-[13px] print:text-[10.5px]">
+            {details.map(([label, value]) =>
+              value?.trim() ? (
+                <div key={label} className="flex min-w-0 gap-1.5">
+                  <dt className="shrink-0 text-muted">{label}:</dt>
+                  <dd className="min-w-0 break-words text-ink-2">{value.trim()}</dd>
+                </div>
+              ) : null,
+            )}
+          </dl>
+        ) : null}
+        {recorded ? (
+          <p className="mt-1 text-[12px] text-muted print:text-[10px]">
+            Último registro: {shortDate(recorded, true)}
+            {relative ? ` (${relativeDayLabel(recorded, today)})` : ""}
+          </p>
+        ) : null}
+      </div>
+      {status ? (
+        <Badge dot={status.color} tone="white" className="h-6 px-2 text-xs print:h-5 print:text-[10px]">
+          {status.label}
+        </Badge>
+      ) : null}
+    </li>
+  );
 }
 
 const SOAP_LABELS = [
@@ -782,7 +966,7 @@ function EvolutionItem({ session, number }: { session: ReportSession; number?: n
       <div className="w-14 shrink-0 text-center print:w-11">
         <p className="text-[12px] text-muted print:text-[9.5px]">{p.weekday}</p>
         <p className="display tabular text-[26px] leading-none text-ink print:text-[18px]">{p.day}</p>
-        <p className="text-[11px] text-subtle print:text-[9px]">
+        <p className="text-[11px] text-muted print:text-[9px] print:text-ink-2">
           {p.month} {String(p.year).slice(2)}
         </p>
       </div>
@@ -801,7 +985,12 @@ function EvolutionItem({ session, number }: { session: ReportSession; number?: n
               {status.label}
             </Badge>
           ) : null}
-          {attended ? <PainChange before={session.pain_before} after={session.pain_after} className="ml-auto" /> : null}
+          {attended && (session.pain_before != null || session.pain_after != null) ? (
+            <span className="ml-auto inline-flex items-center gap-2">
+              <span className="text-[12px] text-muted print:text-[10px]">EVA</span>
+              <PainChange before={session.pain_before} after={session.pain_after} />
+            </span>
+          ) : null}
         </div>
         {attended && (session.techniques ?? []).length > 0 ? (
           <p className="mt-1.5 text-[13px] text-ink-2 print:mt-1 print:text-[10.5px]">

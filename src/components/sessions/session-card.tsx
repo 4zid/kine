@@ -87,7 +87,7 @@ export function DayTile({
         {p.day}
       </span>
       {compact ? null : (
-        <span className={cn("mt-1 text-[11px]", highlight ? "text-white/60" : "text-subtle")}>{p.month}</span>
+        <span className={cn("mt-1 text-[11px]", highlight ? "text-white/70" : "text-muted")}>{p.month}</span>
       )}
     </div>
   );
@@ -112,7 +112,7 @@ export function PainChange({
       </span>
       <span aria-hidden className="inline-flex items-center gap-1.5">
         <PainBadge intensity={before} size="sm" className={before == null ? "px-2 text-xs" : undefined} />
-        <ArrowRight className="size-3.5 text-subtle" />
+        <ArrowRight className="size-3.5 text-muted" />
         <PainBadge intensity={after} size="sm" className={after == null ? "px-2 text-xs" : undefined} />
       </span>
       {delta != null && delta !== 0 ? (
@@ -139,8 +139,11 @@ export function PainChange({
   );
 }
 
+/** Sesiones cargadas con fecha posterior a hoy (datos viejos): no cuentan como realizadas. */
+const FUTURE_STATUS = { label: "Fecha futura", color: "var(--color-warning)" };
+
 function statusOf(session: SessionCardData, upcoming: boolean): { label: string; color: string } {
-  if (upcoming && session.attendance !== "cancelled") return { label: "Programada", color: "#2F6FE0" };
+  if (upcoming) return FUTURE_STATUS;
   return ATTENDANCE[(session.attendance as Attendance) ?? "attended"] ?? ATTENDANCE.attended;
 }
 
@@ -157,12 +160,14 @@ export function SessionCard({
   /** Número de sesión realizada (1, 2, 3…), si corresponde. */
   number?: number;
   isToday?: boolean;
+  /** Fecha posterior a hoy (fila heredada): se muestra como "Fecha futura", sin datos clínicos. */
   upcoming?: boolean;
 }) {
   const [expanded, setExpanded] = useState(false);
   const detailsId = useId();
   const attended = session.attendance === "attended";
-  const clinical = attended && !upcoming;
+  // Una fila con fecha futura puede ser una sesión real mal fechada: mostrar lo que tenga cargado.
+  const clinical = attended;
   const status = statusOf(session, upcoming);
   const time = toHHMM(session.start_time);
   const end = time ? endTime(time, session.duration_minutes) : null;
@@ -217,7 +222,7 @@ export function SessionCard({
               {time ? (
                 <p className="display tabular text-[24px] leading-none font-medium text-ink sm:text-[26px]">
                   {time}
-                  {end ? <span className="text-[17px] font-normal text-subtle sm:text-lg"> – {end}</span> : null}
+                  {end ? <span className="text-[17px] font-normal text-muted sm:text-lg"> – {end}</span> : null}
                 </p>
               ) : (
                 <p className="inline-flex items-center gap-1.5 text-[15px] text-muted">
@@ -306,7 +311,7 @@ export function SessionCard({
         ) : null}
 
         {clinical && soap.length === 0 && !expanded ? (
-          <p className="mt-3 text-[13px] text-subtle">Sin notas SOAP.</p>
+          <p className="mt-3 text-[13px] text-muted">Sin notas SOAP.</p>
         ) : null}
 
         {extras.length > 0 && (expanded || !clinical) ? (

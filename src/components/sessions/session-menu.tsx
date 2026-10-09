@@ -65,8 +65,9 @@ export function SessionMenu({
     }
   };
 
+  // Foco visible: anillo interno de 2px (el fondo gris solo no alcanza el contraste mínimo).
   const itemClass =
-    "flex h-11 w-full items-center gap-3 rounded-xl px-3 text-left text-[14px] font-medium outline-none transition-colors focus-visible:bg-surface-2 [&_svg]:size-4";
+    "flex h-11 w-full items-center gap-3 rounded-xl px-3 text-left text-[14px] font-medium outline-none transition-colors focus-visible:bg-surface-2 focus-visible:ring-2 focus-visible:ring-ink focus-visible:ring-inset [&_svg]:size-4";
 
   return (
     <div ref={rootRef} className={cn("relative", className)}>
@@ -113,10 +114,15 @@ export function SessionMenu({
             role="menuitem"
             type="button"
             onClick={() => {
-              close(false);
+              // Devolver el foco al botón "…" antes de abrir el diálogo: así el diálogo lo
+              // recuerda como origen y lo restaura al cerrarse (si no, el foco cae en <body>).
+              close(true);
               onDelete();
             }}
-            className={cn(itemClass, "text-danger hover:bg-danger-50 focus-visible:bg-danger-50")}
+            className={cn(
+              itemClass,
+              "text-danger hover:bg-danger-50 focus-visible:bg-danger-50 focus-visible:ring-danger",
+            )}
           >
             <Trash2 aria-hidden />
             Eliminar

@@ -3,17 +3,12 @@
 import { CalendarDays, ChevronLeft, ChevronRight } from "lucide-react";
 import { useState } from "react";
 import { cn } from "@/lib/utils";
-import {
-  addDays,
-  dayParts,
-  mondayOf,
-  SESSION_MAX_DAYS_AHEAD,
-  SESSION_MIN_DATE,
-} from "@/components/sessions/session-utils";
+import { addDays, dayParts, mondayOf, SESSION_MIN_DATE } from "@/components/sessions/session-utils";
 
 /**
  * Selector de fecha: tira de la semana (‹ lun … dom ›) con hoy marcado, más un
  * <input type="date"> nativo para fechas lejanas. Controlado por `value` ("YYYY-MM-DD").
+ * Las sesiones documentan encuentros ya ocurridos: los días posteriores a hoy no se pueden elegir.
  */
 export function WeekStrip({
   value,
@@ -37,7 +32,7 @@ export function WeekStrip({
     if (value && (value < weekStart || value > addDays(weekStart, 6))) setWeekStart(mondayOf(value));
   }
 
-  const maxDate = addDays(today, SESSION_MAX_DAYS_AHEAD);
+  const maxDate = today;
   const days = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
   const first = dayParts(days[0]);
   const last = dayParts(days[6]);
@@ -49,10 +44,10 @@ export function WeekStrip({
     <div className="flex flex-col gap-3">
       <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
         <p className="text-[15px] text-muted">
-          Fecha <span className="text-subtle">·</span>{" "}
+          Fecha <span aria-hidden>·</span>{" "}
           <span className="text-ink-2 first-letter:uppercase">{rangeLabel}</span>
         </p>
-        <div className="flex items-center gap-1.5">
+        <div className="flex flex-wrap items-center gap-1.5">
           {showToday ? (
             <button
               type="button"
@@ -114,7 +109,7 @@ export function WeekStrip({
               type="button"
               disabled={disabled}
               aria-pressed={selected}
-              aria-label={`${p.weekdayLong} ${p.day} de ${p.monthLong}${isToday ? " (hoy)" : ""}`}
+              aria-label={`${p.weekdayLong} ${p.day} de ${p.monthLong}${isToday ? " (hoy)" : ""}${d > maxDate ? " (fecha futura)" : ""}`}
               onClick={() => onChange(d)}
               className={cn(
                 "relative flex h-[66px] min-w-0 flex-col items-center justify-center gap-1 rounded-2xl transition-[background-color,color,box-shadow,transform] duration-150 active:scale-[0.97] disabled:opacity-35 sm:h-[84px] sm:rounded-[20px]",
@@ -133,7 +128,7 @@ export function WeekStrip({
               <span className="display tabular text-[22px] leading-none sm:text-[30px]">{p.day}</span>
               {isToday ? (
                 <span
-                  className={cn("hidden text-[10px] font-medium sm:block", selected ? "text-white/70" : "text-green")}
+                  className={cn("hidden text-[10px] font-medium sm:block", selected ? "text-white/70" : "text-success")}
                 >
                   Hoy
                 </span>

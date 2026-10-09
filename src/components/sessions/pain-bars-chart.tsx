@@ -30,14 +30,20 @@ export function PainLegend({ className }: { className?: string }) {
 function Bar({ value, color, dim }: { value: number | null; color: string; dim: boolean }) {
   if (value == null) {
     // Sin registro: marca mínima neutra en la línea base.
-    return <span aria-hidden className="h-[3px] w-3.5 rounded-full bg-line-strong sm:w-4" />;
+    return (
+      <span
+        aria-hidden
+        className="h-[3px] w-3.5 rounded-full bg-line-strong sm:w-4 print:w-auto print:max-w-3.5 print:min-w-px print:flex-1"
+      />
+    );
   }
   const h = Math.max(3, (value / 10) * PLOT_H);
   return (
     <span
       aria-hidden
       className={cn(
-        "w-3.5 rounded-t-[4px] transition-[opacity,height] duration-300 sm:w-4",
+        // Al imprimir, las barras se achican para que entren todas las sesiones en el ancho.
+        "w-3.5 rounded-t-[4px] transition-[opacity,height] duration-300 sm:w-4 print:w-auto print:max-w-3.5 print:min-w-px print:flex-1",
         dim ? "opacity-35" : "opacity-100",
       )}
       style={{ height: h, backgroundColor: color }}
@@ -48,9 +54,18 @@ function Bar({ value, color, dim }: { value: number | null; color: string; dim: 
 /**
  * Barras agrupadas de dolor (EVA 0-10) por sesión: naranja = al inicio, azul = al final.
  * Scroll horizontal si hay muchas sesiones, tooltip al pasar el mouse / tocar / con flechas,
- * tabla equivalente para lectores de pantalla. Al imprimir, todas las barras entran en el ancho.
+ * tabla equivalente para lectores de pantalla. Al imprimir, todas las barras entran en el ancho
+ * y se muestran a lo sumo `printMaxLabels` fechas (menos si el gráfico va en una columna angosta).
  */
-export function PainBarsChart({ points, className }: { points: PainPoint[]; className?: string }) {
+export function PainBarsChart({
+  points,
+  className,
+  printMaxLabels = 14,
+}: {
+  points: PainPoint[];
+  className?: string;
+  printMaxLabels?: number;
+}) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const groupRefs = useRef<(HTMLDivElement | null)[]>([]);
@@ -159,7 +174,10 @@ export function PainBarsChart({ points, className }: { points: PainPoint[]; clas
   const activePoint = active != null ? points[active] : null;
   const last = n - 1;
   // Al imprimir, si hay muchas sesiones mostramos una etiqueta de fecha cada tanto.
-  const printLabelEvery = Math.max(1, Math.ceil(n / 14));
+  const printLabelEvery = Math.max(1, Math.ceil(n / Math.max(1, printMaxLabels)));
+  // La última etiqueta siempre se muestra: ocultar la anterior visible si quedaría pegada.
+  const lastLabeled = Math.floor((n - 1) / printLabelEvery) * printLabelEvery;
+  const hideBeforeLast = n > 1 && lastLabeled !== last && last - lastLabeled < printLabelEvery;
 
   return (
     <div className={cn("relative [print-color-adjust:exact] [-webkit-print-color-adjust:exact]", className)}>
@@ -167,7 +185,7 @@ export function PainBarsChart({ points, className }: { points: PainPoint[]; clas
         ref={wrapRef}
         tabIndex={0}
         role="group"
-        aria-label="Gráfico de dolor por sesión. Usá las flechas para recorrer las sesiones."
+        aria-label="Gráfico de la EVA de cada sesión. Usá las flechas para recorrer las sesiones."
         onKeyDown={onKeyDown}
         onBlur={() => setActive(null)}
         onPointerLeave={(e) => {
@@ -180,7 +198,7 @@ export function PainBarsChart({ points, className }: { points: PainPoint[]; clas
           {TICKS.map((t) => (
             <span
               key={t}
-              className="tabular absolute right-0 -translate-y-1/2 text-[11px] leading-none text-subtle"
+              className="tabular absolute right-0 -translate-y-1/2 text-[11px] leading-none text-muted"
               style={{ top: PLOT_H - (t / 10) * PLOT_H }}
             >
               {t}
@@ -244,7 +262,8 @@ export function PainBarsChart({ points, className }: { points: PainPoint[]; clas
                       className={cn(
                         "tabular mt-2 text-[11px] whitespace-nowrap transition-colors",
                         isActive ? "font-semibold text-ink" : "text-muted",
-                        i % printLabelEvery !== 0 && i !== last && "print:invisible",
+                        ((i % printLabelEvery !== 0 && i !== last) || (hideBeforeLast && i === lastLabeled)) &&
+                          "print:invisible",
                       )}
                     >
                       {p.label}
@@ -295,7 +314,7 @@ export function PainBarsChart({ points, className }: { points: PainPoint[]; clas
       {/* Tabla equivalente (lectores de pantalla). El sr-only va en un div: una tabla no se achica a 1px. */}
       <div className="sr-only">
         <table>
-          <caption>Dolor por sesión (EVA 0 a 10)</caption>
+          <caption>EVA de cada sesión (0 = sin dolor, 10 = el peor dolor imaginable)</caption>
           <thead>
             <tr>
               <th scope="col">Sesión</th>
